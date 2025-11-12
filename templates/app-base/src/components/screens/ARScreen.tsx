@@ -373,24 +373,36 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       {/* Binóculos na tela, centralizado, sem escala, com tamanho nativo */}
       {/* Só mostra quando a cena AR estiver pronta, para evitar efeito de sobreposição no loading */}
       {usarAFrame && !arLoading && (
-        <img
-          src={binoculosImgPath}
-          alt="Binóculos"
-          className="ar-binoculos-overlay"
+        <div
           style={{
-            position: 'absolute',
-            transform: 'rotateZ(-90deg)',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
             pointerEvents: 'none',
             zIndex: 99999,
-            maxWidth: 'none',
-            maxHeight: 'none',
-            width: 'auto',
-            height: 'auto',
-            // Não impõe altura/largura, será do tamanho natural
-            // O overlay é feito por CSS absoluto sobre o canvas da cena
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
-          draggable={false}
-        />
+        >
+          <img
+            src={binoculosImgPath}
+            alt="Binóculos"
+            className="ar-binoculos-overlay"
+            style={{
+              transform: 'rotateZ(-90deg)',
+              maxWidth: '100vw',
+              maxHeight: '100vh',
+              width: 'auto',
+              height: 'auto',
+              display: 'block',
+              pointerEvents: 'none',
+            }}
+            draggable={false}
+          />
+        </div>
       )}
 
       {/* Face Tracker (se habilitado) */}
