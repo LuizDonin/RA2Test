@@ -7,6 +7,6 @@
         "usarAFrame": true,
         "usarVideo": true,
         "usarFaceTracking": false,
-        "cameraFacing": "user"
+        "cameraFacing": "environment"
     }
 }
