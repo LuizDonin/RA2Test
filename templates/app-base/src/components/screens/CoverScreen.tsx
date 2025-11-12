@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
 import { LandscapeBlocker } from '../LandscapeBlocker'
+import { initializeGlobal } from '../../utils/globalInit'
 import '../../styles/cover-screen.css'
 
 interface CoverScreenProps {
@@ -14,6 +15,18 @@ export const CoverScreen: React.FC<CoverScreenProps> = ({
   onNavigate,
   backgroundImage
 }) => {
+  // Inicializar A-Frame quando a tela montar
+  useEffect(() => {
+    console.log('🎬 CoverScreen montada - inicializando A-Frame...')
+    initializeGlobal()
+      .then(() => {
+        console.log('✅ A-Frame inicializado na CoverScreen')
+      })
+      .catch((error) => {
+        console.error('❌ Erro ao inicializar A-Frame na CoverScreen:', error)
+      })
+  }, [])
+
   // Get base URL from vite config or use current location
   const getBaseUrl = () => {
     const base = (import.meta as any)?.env?.BASE_URL || (document?.baseURI ? new URL(document.baseURI).pathname : '/')

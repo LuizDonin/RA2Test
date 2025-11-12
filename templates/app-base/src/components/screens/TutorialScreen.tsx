@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
+import { initializeGlobal } from '../../utils/globalInit'
 import '../../styles/tutorial-screen.css'
 
 interface TutorialScreenProps {
@@ -12,6 +13,25 @@ interface TutorialScreenProps {
 export const TutorialScreen: React.FC<TutorialScreenProps> = ({
   onNavigate
 }) => {
+  // Inicializar A-Frame quando a tela montar (caso não tenha sido inicializado na CoverScreen)
+  useEffect(() => {
+    console.log('🎬 TutorialScreen montada - verificando A-Frame...')
+    // Verificar se já foi inicializado
+    const scene = document.querySelector('a-scene')
+    if (!scene) {
+      console.log('🎬 A-Frame não encontrado - inicializando...')
+      initializeGlobal()
+        .then(() => {
+          console.log('✅ A-Frame inicializado na TutorialScreen')
+        })
+        .catch((error) => {
+          console.error('❌ Erro ao inicializar A-Frame na TutorialScreen:', error)
+        })
+    } else {
+      console.log('✅ A-Frame já estava inicializado')
+    }
+  }, [])
+
   // Get base URL from vite config or use current location
   const getBaseUrl = () => {
     const base = (import.meta as any)?.env?.BASE_URL || (document?.baseURI ? new URL(document.baseURI).pathname : '/')
