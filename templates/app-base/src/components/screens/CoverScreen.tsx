@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
+import { LandscapeBlocker } from '../LandscapeBlocker'
 import '../../styles/cover-screen.css'
 
 interface CoverScreenProps {
@@ -13,58 +14,6 @@ export const CoverScreen: React.FC<CoverScreenProps> = ({
   onNavigate,
   backgroundImage
 }) => {
-  // Solicitar permissão de device orientation e motion quando a tela montar
-  useEffect(() => {
-    const requestDevicePermissions = async () => {
-      try {
-        // Solicitar permissão de DeviceOrientationEvent (iOS 13+)
-        if (typeof DeviceOrientationEvent !== 'undefined' && 
-            typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
-          try {
-            const permission = await (DeviceOrientationEvent as any).requestPermission()
-            if (permission === 'granted') {
-              console.log('✅ Permissão de device orientation concedida')
-            } else {
-              console.warn('⚠️ Permissão de device orientation negada')
-            }
-          } catch (err) {
-            console.warn('⚠️ Erro ao solicitar permissão de device orientation:', err)
-          }
-        }
-
-        // Solicitar permissão de DeviceMotionEvent (iOS 13+)
-        if (typeof DeviceMotionEvent !== 'undefined' && 
-            typeof (DeviceMotionEvent as any).requestPermission === 'function') {
-          try {
-            const permission = await (DeviceMotionEvent as any).requestPermission()
-            if (permission === 'granted') {
-              console.log('✅ Permissão de device motion concedida')
-            } else {
-              console.warn('⚠️ Permissão de device motion negada')
-            }
-          } catch (err) {
-            console.warn('⚠️ Erro ao solicitar permissão de device motion:', err)
-          }
-        }
-
-        // Android e outros navegadores não requerem permissão explícita
-        if (typeof (DeviceOrientationEvent as any)?.requestPermission !== 'function' &&
-            typeof (DeviceMotionEvent as any)?.requestPermission !== 'function') {
-          console.log('ℹ️ Device orientation/motion disponível sem permissão explícita')
-        }
-      } catch (error) {
-        console.warn('⚠️ Erro ao solicitar permissões de device:', error)
-      }
-    }
-
-    // Pequeno delay para garantir que a tela está totalmente montada
-    const timer = setTimeout(() => {
-      requestDevicePermissions()
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [])
-
   // Get base URL from vite config or use current location
   const getBaseUrl = () => {
     const base = (import.meta as any)?.env?.BASE_URL || (document?.baseURI ? new URL(document.baseURI).pathname : '/')
@@ -88,16 +37,18 @@ export const CoverScreen: React.FC<CoverScreenProps> = ({
   const btnJogarImage = normalizePath('assets/images/btn-jogar.png')
 
   return (
-    <div
-      className="cover-screen"
-      style={{
-        backgroundImage: `url("${bgImage}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
-      }}
-    >
-      {/* Header Image */}
+    <>
+      <LandscapeBlocker />
+      <div
+        className="cover-screen"
+        style={{
+          backgroundImage: `url("${bgImage}")`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }}
+      >
+        {/* Header Image */}
       <div className="cover-header-image">
         <img
           src={headerImage}
@@ -129,5 +80,6 @@ export const CoverScreen: React.FC<CoverScreenProps> = ({
         />
       </div>
     </div>
+    </>
   )
 }

@@ -254,7 +254,7 @@ async function initializeAFrameScene(): Promise<void> {
     scene.id = 'ar-scene-main'
     scene.setAttribute('embedded', 'true')
     scene.setAttribute('vr-mode-ui', 'enabled: false')
-    scene.setAttribute('device-orientation-permission-ui', 'enabled: false')
+    scene.setAttribute('device-orientation-permission-ui', 'enabled: true')
     scene.setAttribute('renderer', 'alpha: true; antialias: true; colorManagement: true; physicallyCorrectLights: false; sortObjects: true; logarithmicDepthBuffer: false; precision: mediump;')
     scene.setAttribute('webxr', 'enabled: false')
     scene.setAttribute('background', 'transparent: true')
