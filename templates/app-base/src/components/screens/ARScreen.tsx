@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { FaceTracker } from '../FaceTracker'
 import { ARSceneAFrame } from '../ARSceneAFrame'
+import { LandscapeEnforcer } from '../LandscapeEnforcer'
 import { useRA } from '../../contexts/RAContext'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
 import '../../styles/ar-screen.css'
@@ -179,8 +180,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       pelicano = document.createElement('a-image')
       pelicano.id = 'pelicano-entity'
       pelicano.setAttribute('src', '#pelicanoTexture')
-      pelicano.setAttribute('width', '2')
-      pelicano.setAttribute('height', '2')
+      pelicano.setAttribute('width', '0.8')
+      pelicano.setAttribute('height', '0.8')
       pelicano.setAttribute('position', `${PELICANO_INITIAL_POSITION.x} ${PELICANO_INITIAL_POSITION.y} ${PELICANO_INITIAL_POSITION.z}`)
       pelicano.setAttribute('look-at', '[camera]')
       sceneEl.appendChild(pelicano)
@@ -210,11 +211,23 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     let pelicanoWasCentered = false
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      pelicanoKeysRef.current[e.key.toLowerCase()] = true
+      // Adiciona suporte para movimentação vertical com PgUp/PgDown
+      let key = e.key
+      if (key === 'PageUp' || key === 'PageDown') {
+        pelicanoKeysRef.current[key] = true
+      } else {
+        pelicanoKeysRef.current[key.toLowerCase()] = true
+      }
     }
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      pelicanoKeysRef.current[e.key.toLowerCase()] = false
+      // Adiciona suporte para movimentação vertical com PgUp/PgDown
+      let key = e.key
+      if (key === 'PageUp' || key === 'PageDown') {
+        pelicanoKeysRef.current[key] = false
+      } else {
+        pelicanoKeysRef.current[key.toLowerCase()] = false
+      }
     }
 
     pelicanoHandlersRef.current.handleKeyDown = handleKeyDown
@@ -249,9 +262,18 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         newX += moveSpeed
         moved = true
       }
+      // Movimento vertical usando PageUp/PageDown
+      if (pelicanoKeysRef.current['PageUp']) {
+        newY += moveSpeed
+        moved = true
+      }
+      if (pelicanoKeysRef.current['PageDown']) {
+        newY -= moveSpeed
+        moved = true
+      }
 
       const minX = -3, maxX = 3
-      const minY = 0.9, maxY = 2.6
+      const minY = 0, maxY = 4
       const minZ = -6, maxZ = 0
       newX = Math.max(minX, Math.min(maxX, newX))
       newY = Math.max(minY, Math.min(maxY, newY))
@@ -330,6 +352,9 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
   return (
     <div className="ar-game-screen">
+      {/* Landscape Enforcer - força orientação landscape */}
+      <LandscapeEnforcer enabled={true} />
+      
       {/* Loading overlay */}
       {arLoading && (
         <div className="ar-loading-overlay">
@@ -354,9 +379,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           className="ar-binoculos-overlay"
           style={{
             position: 'absolute',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
+            transform: 'rotateZ(-90deg)',
             pointerEvents: 'none',
             zIndex: 99999,
             maxWidth: 'none',

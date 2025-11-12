@@ -15,7 +15,7 @@ function App() {
   return (
     <RAProvider>
       <div className="ar-app">
-        <LandscapeBlocker />
+        
         <ScreenManager
           initialScreen="loading"
           appConfig={appConfig}
