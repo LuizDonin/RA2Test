@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
 import { LandscapeBlocker } from '../LandscapeBlocker'
 import { initializeGlobal, requestDeviceOrientationPermission } from '../../utils/globalInit'
+import { playClickSound } from '../../utils/soundUtils'
 import '../../styles/tutorial-screen.css'
 
 interface TutorialScreenProps {
@@ -40,6 +41,8 @@ export const TutorialScreen: React.FC<TutorialScreenProps> = ({
   const handleNavigateToAR = async () => {
     if (isRequestingPermission) return
 
+    playClickSound()
+    
     // Mostrar tela preta IMEDIATAMENTE antes de qualquer coisa
     setShowBlackScreen(true)
     setIsRequestingPermission(true)

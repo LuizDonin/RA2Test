@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
+import { playClickSound } from '../../utils/soundUtils'
 import '../../styles/result-screen.css'
 
 interface ResultScreenProps {
@@ -40,6 +41,7 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
     }
 
     const handleEmojiClick = (emojiId: string) => {
+        playClickSound()
         setClickedEmoji(emojiId)
         // Após a animação de scale, navegar para CoverScreen
         setTimeout(() => {

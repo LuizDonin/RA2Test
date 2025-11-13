@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
 import { LandscapeBlocker } from '../LandscapeBlocker'
+import { playClickSound, playErrorSound, playSuccessSound } from '../../utils/soundUtils'
 import '../../styles/quiz1screen.css'
 
 interface Quiz1Props {
@@ -64,7 +65,10 @@ export const Quiz1: React.FC<Quiz1Props> = ({
 
     // Handler para respostas
     const handleResposta = (opcao: string) => {
+        playClickSound()
+        
         if (opcao === 'PelicanoR') {
+            playSuccessSound()
             setIsCorrectAnswer(true)
             setTimeout(() => {
                 setShowColoredPelicano(true)
@@ -73,6 +77,8 @@ export const Quiz1: React.FC<Quiz1Props> = ({
             setTimeout(() => {
                 onNavigate('ar2', 'fade', 'right')
             }, 3000)
+        } else {
+            playErrorSound()
         }
     }
 

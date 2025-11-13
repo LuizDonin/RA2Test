@@ -266,3 +266,10 @@
     transform: translateX(-50%) translateY(0);
   }
 }
+
+/* ===== ANIMAÇÃO DO MACACO TOP (igual ao pelicano top) ===== */
+.quiz1-macaco-top {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-100px);
+  animation: quiz1-pelicano-top-slide-down 0.8s ease-out forwards;
+}

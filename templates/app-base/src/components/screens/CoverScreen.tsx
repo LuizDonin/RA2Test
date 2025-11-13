@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
 import { LandscapeBlocker } from '../LandscapeBlocker'
 import { initializeGlobal } from '../../utils/globalInit'
+import { playClickSound } from '../../utils/soundUtils'
 import '../../styles/cover-screen.css'
 
 interface CoverScreenProps {
@@ -74,7 +75,10 @@ export const CoverScreen: React.FC<CoverScreenProps> = ({
       <div className="cover-content">
         <button
           className="cover-button-jogar"
-          onClick={() => onNavigate('tutorial', 'zoom-out', 'right')}
+          onClick={() => {
+            playClickSound()
+            onNavigate('tutorial', 'zoom-out', 'right')
+          }}
           style={{
             backgroundImage: `url(${btnJogarImage})`,
             backgroundSize: 'contain',

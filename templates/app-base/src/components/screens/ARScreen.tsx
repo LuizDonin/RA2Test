@@ -23,6 +23,9 @@ const PELICANO_INITIAL_SCALE = 1
 const PELICANO_MAX_SCALE = 2
 const PELICANO_SCALE_TIMER_DURATION = 1.5 // segundos
 
+// DESLOCAMENTO VERTICAL DOS BINÓCULOS
+const BINOCULOS_VERTICAL_SHIFT = -0.07 // -0.07 = 7vh MAIS PARA CIMA
+
 export const ARScreen: React.FC<ARScreenProps> = ({
   onNavigate
 }) => {
@@ -69,13 +72,13 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     if (binoculosRect) {
       return {
         centerX: binoculosRect.left + binoculosRect.width / 2.8,
-        centerY: binoculosRect.top + binoculosRect.height / 2,
+        centerY: binoculosRect.top + binoculosRect.height / 2 + BINOCULOS_VERTICAL_SHIFT * window.innerHeight,
         radius: DEBUG_CIRCLE_RADIUS_PX
       }
     }
     return {
       centerX: window.innerWidth / 2,
-      centerY: window.innerHeight / 2,
+      centerY: window.innerHeight / 2 + BINOCULOS_VERTICAL_SHIFT * window.innerHeight,
       radius: DEBUG_CIRCLE_RADIUS_PX
     }
   }, [binoculosRect])
@@ -85,13 +88,13 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     if (binoculosRect) {
       return {
         centerX: binoculosRect.left + (2.6 * binoculosRect.width) / 4,
-        centerY: binoculosRect.top + binoculosRect.height / 2,
+        centerY: binoculosRect.top + binoculosRect.height / 2 + BINOCULOS_VERTICAL_SHIFT * window.innerHeight,
         radius: DEBUG_CIRCLE_RADIUS_PX_SECOND
       }
     }
     return {
       centerX: window.innerWidth / 2,
-      centerY: window.innerHeight / 2,
+      centerY: window.innerHeight / 2 + BINOCULOS_VERTICAL_SHIFT * window.innerHeight,
       radius: DEBUG_CIRCLE_RADIUS_PX_SECOND
     }
   }, [binoculosRect])
@@ -825,12 +828,13 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         <ARSceneAFrame />
       )}
 
-      {/* Binóculos na tela, centralizado, sem escala, com tamanho nativo + círculo de debug */}
+      {/* Binóculos na tela, centralizado, SEM ESCALA, com tamanho nativo + círculo de debug
+        -- DESLOCADOS UM POUCO PARA CIMA */}
       {usarAFrame && !arLoading && (
         <div
           style={{
             position: 'fixed',
-            top: 0,
+            top: `${BINOCULOS_VERTICAL_SHIFT * 100}vh`,
             left: 0,
             width: '100vw',
             height: '100vh',

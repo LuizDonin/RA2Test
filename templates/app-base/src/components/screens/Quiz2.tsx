@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
 import { LandscapeBlocker } from '../LandscapeBlocker'
+import { playClickSound, playErrorSound, playSuccessSound } from '../../utils/soundUtils'
 import '../../styles/quiz1screen.css'
 
 interface Quiz2Props {
@@ -57,7 +58,10 @@ export const Quiz2: React.FC<Quiz2Props> = ({
     const bgCapaImg = normalizePath('assets/images/bg-capa.png')
 
     const handleResposta = (opcao: string) => {
+        playClickSound()
+        
         if (opcao === 'Macaco') {
+            playSuccessSound()
             setIsCorrectAnswer(true)
             setTimeout(() => {
                 setShowColoredMacaco(true)
@@ -66,6 +70,8 @@ export const Quiz2: React.FC<Quiz2Props> = ({
             setTimeout(() => {
                 onNavigate('resultado', 'fade', 'right')
             }, 2700)
+        } else {
+            playErrorSound()
         }
     }
 
