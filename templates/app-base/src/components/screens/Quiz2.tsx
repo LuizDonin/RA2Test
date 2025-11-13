@@ -221,12 +221,11 @@ export const Quiz2: React.FC<Quiz2Props> = ({
                     className="quiz1-pelicano-top"
                     style={{
                         position: 'fixed',
-                        top: 8,
+                        top: 20,
                         left: '50%',
-                        transform: 'translateX(-50%)',
                         zIndex: 21,
                         pointerEvents: 'none'
-                        // Não definir width nem height para manter tamanho nativo (tira width: 88, height: 'auto')
+                        // Não definir transform aqui - deixar o CSS controlar a animação
                     }}
                 />
             )}
