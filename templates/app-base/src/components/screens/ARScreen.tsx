@@ -818,33 +818,32 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   // Custom: style for chosen animal shown in 2D after answer
   // Centralização corrigida: use absolute LEFT/TOP 50% + translate(-50%, -50%), sem RELATIVE
   // REMOVA qualquer margin/marginTop/marginAuto do antigo, e SEM delay até o feedback div estar no DOM
+  // Novo: animal + feedback mais para baixo, mais próximos
   const chosen2DAnimalStyle: React.CSSProperties = {
     userSelect: 'none',
     pointerEvents: 'none',
     display: 'block',
-    // Um pouco menor que o original
     width: 'min(220px, 48vw)',
     maxWidth: '220px',
     minWidth: '110px',
     height: 'auto',
-    position: 'static', // não mais relative/absolute aqui!
+    position: 'static',
     left: undefined,
     right: undefined,
     margin: undefined,
-    // Para ir mais para baixo, adiciona marginTop
-    marginTop: '100px',
-    // Não há transform de translate aqui
-    transform: 'scale(0.85)', // apenas escala
+    // gap menor ao feedback, sem descer tanto
+    marginTop: '2px', // reduzido ainda mais para mais próximo das estrelas/erro
+    transform: 'scale(0.85)',
     transition: 'none'
   }
 
-  // Novo estilo reduzido para o feedback das estrelas/erro:
+  // Feedback estrelas/erro: mais para cima
   const feedbackIconStyle: React.CSSProperties = {
     userSelect: 'none',
     pointerEvents: 'none',
     display: 'block',
     transform: 'scale(1)',
-    marginBottom: '-100px',
+    marginBottom: '0px',
     marginTop: '0px',
     maxWidth: '120px',
     minWidth: '64px',
@@ -854,11 +853,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   }
 
   // --- Garantir que não haja "flick" na animação do feedback central ---
-  // Isso ocorre porque o div pai do feedback estava montando inicialmente fora do centro (por causa do transition de translate),
-  // então forçamos o uso fixo de LEFT/TOP 50% + translate(-50%, -50%) sempre.
-
-  // Para garantir que não haja "flick": só mostramos o conteúdo quando o div feedback está no DOM (layout estabilizado).
-  // O state feedbackMounted auxilia nisso.
   useEffect(() => {
     if (!selectedAnimal) {
       setFeedbackMounted(false)
@@ -1098,13 +1092,14 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         )
       })()}
 
-      {/* Feedback: corrigido para SEMPRE aparecer centralizado já na posição destino, sem flick */}
+      {/* Feedback central: MAIS para cima e animal próximo das estrelas/erro */}
       {selectedAnimal && (
         <div
           ref={feedbackRef}
           style={{
             position: 'fixed',
-            top: '54%',
+            // Centraliza e sobe um pouco, antes estava top: '78%'
+            top: '68%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
             zIndex: 20,
@@ -1112,7 +1107,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '1px',
+            gap: '2px', // espaço pequeno entre feedback e animal
             animation: feedbackMounted ? 'fadeInScale 0.5s ease-out' : undefined,
             opacity: feedbackMounted ? 1 : 0,
             transition: 'opacity 0.07s linear'
