@@ -787,6 +787,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     maxWidth: '220px',
     minWidth: '110px',
     height: 'auto',
+    aspectRatio: '1/1',
     position: 'static',
     left: undefined,
     right: undefined,
