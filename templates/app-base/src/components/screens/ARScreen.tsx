@@ -42,7 +42,6 @@ function getCorrectAnimalForRound(round: number): AnimalType {
 }
 
 // --- Correção bug feedback "flick" centralização ---
-// Usaremos refs e state dedicado para forçar o conteúdo de feedback a aparecer já centralizado, nunca com translate incorreto
 
 export const ARScreen: React.FC<ARScreenProps> = ({
   onNavigate: _onNavigate
@@ -59,9 +58,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   const [feedbackType, setFeedbackType] = useState<'success' | 'error' | null>(null)
   const [isAnimating, setIsAnimating] = useState(false)
 
-  // Ref para controlar quando o feedback foi realmente montado no DOM (usado para garantir centralização)
-  const feedbackRef = useRef<HTMLDivElement | null>(null)
-  const [feedbackMounted, setFeedbackMounted] = useState(false)
+  // Removido feedbackMounted para garantir surgimento do feedback no ponto final!
+  // Não há mais delay/setTimeout, o feedback já aparece centralizado e animado lá mesmo
 
   // For top image transitions between rounds (custom logic)
   const [topImageAnim, setTopImageAnim] = useState<{
@@ -477,7 +475,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     setSelectedAnimal(clickedAnimal)
     setFeedbackType(isCorrect ? 'success' : 'error')
     clearAnimals()
-    setFeedbackMounted(false) // REFORÇA remount do componente feedback no clique!
 
     if (isCorrect) {
       playSuccessSound()
@@ -503,18 +500,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             setSelectedAnimal(null)
             setFeedbackType(null)
             setIsAnimating(false)
-            setFeedbackMounted(false)
-            if ((logicCurrentRound + 1) < TOTAL_ROUNDS) {
-              const nextAnimal = ANIMALS[logicCurrentRound + 1]
-              const correctAnimalForNextRound = nextAnimal.name
-              const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForNextRound)
-              const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
-              setPendingARImages({
-                correct: correctAnimalForNextRound,
-                wrong: randomWrongAnimal.name
-              })
-              setCanDisplayAnimals(false)
-            }
           }, 600)
         }, 600)
       }, 800)
@@ -524,7 +509,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         setSelectedAnimal(null)
         setFeedbackType(null)
         setIsAnimating(false)
-        setFeedbackMounted(false)
         const curr = currentRoundRef.current < TOTAL_ROUNDS ? ANIMALS[currentRoundRef.current] : null
         if (curr) {
           const correctAnimalForRound = curr.name
@@ -552,11 +536,9 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     })
   }, [normalizePath])
 
-  // Inicializa topImageAnim corretamente quando muda currentRound (inclusive no início)
   useEffect(() => {
     if (!sceneReady) return
 
-    // Ao terminar as rodadas, esconde topimage
     if (currentRound >= TOTAL_ROUNDS) {
       setTopImageAnim({ current: null, next: null, phase: 'idle' })
       return
@@ -741,36 +723,20 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
   // TopImage animation helpers
   function getTopImageStyle(anim: typeof topImageAnim, kind: 'current' | 'next') {
-    // animation phases: show-current | hide-current | show-next | idle
-
-    // hide-current/top: moves much further up offscreen (e.g., -400px)
     if (anim.phase === 'show-current' && kind === 'current') {
-      // Entrando
-      return {
-        top: 30,
-      }
+      return { top: 30 }
     }
     if (anim.phase === 'hide-current' && kind === 'current') {
-      // Saindo pra cima, muito além da tela
       return {
         top: '-400px',
         transition: 'top 0.6s cubic-bezier(.49,1.8,.55,1.04), opacity 0.35s'
       }
     }
-
-    // show-next: a próxima topimage começa bem acima da tela, e desce em movimento linear até 30px
     if (anim.phase === 'show-next' && kind === 'next') {
-      return {
-        top: '-160px',
-        transition: 'top 0s',
-        willChange: 'top'
-      }
+      return { top: '-160px', transition: 'top 0s', willChange: 'top' }
     }
     if (anim.phase === 'show-next' && kind === 'current') {
-      return {
-        top: '-2000px',
-        transition: 'top 0.01s'
-      }
+      return { top: '-2000px', transition: 'top 0.01s' }
     }
     if (anim.phase === 'show-current' && kind === 'next') {
       return { top: '-2000px', transition: 'top 0.01s' }
@@ -781,10 +747,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     return { top: '-2000px', transition: 'top 0.01s' }
   }
 
-  // Estado auxiliar para ativar transição linear da topimage "next"
   const [showNextTopImageLinearAnim, setShowNextTopImageLinearAnim] = useState(false)
 
-  // Handle animation for next topImage: entrada linear vinda do topo da tela para 30px
   useEffect(() => {
     if (topImageAnim.phase === 'show-next') {
       setShowNextTopImageLinearAnim(false)
@@ -815,10 +779,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     ? normalizePath(`assets/images/${ANIMALS.find(a => a.name === selectedAnimal)!.arImage}`)
     : ''
 
-  // Custom: style for chosen animal shown in 2D after answer
-  // Centralização corrigida: use absolute LEFT/TOP 50% + translate(-50%, -50%), sem RELATIVE
-  // REMOVA qualquer margin/marginTop/marginAuto do antigo, e SEM delay até o feedback div estar no DOM
-  // Novo: animal + feedback mais para baixo, mais próximos
   const chosen2DAnimalStyle: React.CSSProperties = {
     userSelect: 'none',
     pointerEvents: 'none',
@@ -831,13 +791,11 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     left: undefined,
     right: undefined,
     margin: undefined,
-    // gap menor ao feedback, sem descer tanto
-    marginTop: '2px', // reduzido ainda mais para mais próximo das estrelas/erro
+    marginTop: '2px',
     transform: 'scale(0.85)',
     transition: 'none'
   }
 
-  // Feedback estrelas/erro: mais para cima
   const feedbackIconStyle: React.CSSProperties = {
     userSelect: 'none',
     pointerEvents: 'none',
@@ -852,20 +810,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     transition: 'none'
   }
 
-  // --- Garantir que não haja "flick" na animação do feedback central ---
-  useEffect(() => {
-    if (!selectedAnimal) {
-      setFeedbackMounted(false)
-      return
-    }
-    // Pequeno timeout para garantir que o elemento está 100% no DOM antes de mostrar conteúdo (geralmente 1 tick)
-    const id = window.setTimeout(() => {
-      setFeedbackMounted(true)
-    }, 0)
-    return () => {
-      clearTimeout(id)
-    }
-  }, [selectedAnimal])
+  // --- Nova animação: feedback já aparece centralizado no destino com fadeInScale ---  
+  // REMOVIDO estado/setTimeout "feedbackMounted"! O feedback já aparece na posição final, animando do opacity 0/scale 0.5 para opacity 1/scale 1
 
   return (
     <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{ position: 'fixed' }}>
@@ -1092,13 +1038,11 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         )
       })()}
 
-      {/* Feedback central: MAIS para cima e animal próximo das estrelas/erro */}
+      {/* Feedback central: animação acontece já na posição final, sem deslocamento. */}
       {selectedAnimal && (
         <div
-          ref={feedbackRef}
           style={{
             position: 'fixed',
-            // Centraliza e sobe um pouco, antes estava top: '78%'
             top: '68%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
@@ -1107,13 +1051,13 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '2px', // espaço pequeno entre feedback e animal
-            animation: feedbackMounted ? 'fadeInScale 0.5s ease-out' : undefined,
-            opacity: feedbackMounted ? 1 : 0,
+            gap: '2px',
+            animation: 'fadeInScale 0.5s ease-out',
+            opacity: 1,
             transition: 'opacity 0.07s linear'
           }}
         >
-          {(feedbackMounted && feedbackImage) && (
+          {feedbackImage && (
             <img
               src={feedbackImage}
               alt={feedbackType === 'success' ? 'Estrelas' : 'Erro'}
@@ -1121,14 +1065,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
               draggable={false}
             />
           )}
-          {feedbackMounted && (
-            <img
-              src={selectedAnimalImage}
-              alt={selectedAnimal}
-              style={chosen2DAnimalStyle}
-              draggable={false}
-            />
-          )}
+          <img
+            src={selectedAnimalImage}
+            alt={selectedAnimal}
+            style={chosen2DAnimalStyle}
+            draggable={false}
+          />
         </div>
       )}
 
