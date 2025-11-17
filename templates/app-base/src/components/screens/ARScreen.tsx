@@ -200,17 +200,17 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         let video = existingVideo
         if (!video) {
           video = document.createElement('video')
-          video.id = 'arjs-video'
-          video.setAttribute('playsinline', '')
-          video.setAttribute('autoplay', '')
-          video.muted = true
-          video.style.position = 'fixed'
-          video.style.top = '0'
-          video.style.left = '0'
-          video.style.width = '100vw'
-          video.style.height = '100vh'
-          video.style.objectFit = 'cover'
-          video.style.zIndex = '0'
+        video.id = 'arjs-video'
+        video.setAttribute('playsinline', '')
+        video.setAttribute('autoplay', '')
+        video.muted = true
+        video.style.position = 'fixed'
+        video.style.top = '0'
+        video.style.left = '0'
+        video.style.width = '100vw'
+        video.style.height = '100vh'
+        video.style.objectFit = 'cover'
+        video.style.zIndex = '0'
           document.body.appendChild(video)
         }
         video.style.display = 'block'
@@ -236,7 +236,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           )
         } else {
           // eslint-disable-next-line no-console
-          console.error('Erro ao configurar câmera:', err)
+        console.error('Erro ao configurar câmera:', err)
         }
         setArLoading(false)
         setTimeout(() => {
@@ -400,7 +400,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
     const sceneEl = arSceneRef.current.getScene()
     if (!sceneEl) {
-      return
+        return
     }
 
     const sceneElement = sceneEl as HTMLElement
@@ -531,15 +531,26 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             phase: 'show-next'
           }))
           setTimeout(() => {
-            setTopImageAnim({
-              current: ANIMALS[logicCurrentRound + 1] ?? null,
-              next: null,
-              phase: (logicCurrentRound + 1) < TOTAL_ROUNDS ? 'show-current' : 'idle'
-            })
-            setCurrentRound(prev => prev + 1)
-            setSelectedAnimal(null)
-            setFeedbackType(null)
-            setIsAnimating(false)
+            const nextRound = logicCurrentRound + 1
+            if (nextRound >= TOTAL_ROUNDS) {
+              // Jogo terminou - navegar para ResultScreen
+              setSelectedAnimal(null)
+              setFeedbackType(null)
+              setIsAnimating(false)
+              setTimeout(() => {
+                _onNavigate('resultado', 'fade', 'right')
+              }, 500)
+            } else {
+              setTopImageAnim({
+                current: ANIMALS[nextRound] ?? null,
+                next: null,
+                phase: 'show-current'
+              })
+              setCurrentRound(prev => prev + 1)
+              setSelectedAnimal(null)
+              setFeedbackType(null)
+              setIsAnimating(false)
+            }
           }, 600)
         }, 1000)
       }, 2000)
@@ -928,7 +939,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           ))}
         </div>
       )}
-
+      
       {/* Loading overlay */}
       {arLoading && (
         <div className="ar-loading-overlay">
@@ -950,12 +961,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       {/* Top image round */}
       <>
         {topImageAnim.current && (
-          <div
-            style={{
-              position: 'fixed',
+        <div
+          style={{
+            position: 'fixed',
               left: '50%',
               transform: 'translateX(-50%)',
-              zIndex: 15,
+          zIndex: 15,
               pointerEvents: 'none',
               background: 'rgba(0,0,0,0.0)',
               padding: '0.5rem',
@@ -964,24 +975,24 @@ export const ARScreen: React.FC<ARScreenProps> = ({
               opacity: topImageAnim.phase === 'idle' ? 0 : 1
             }}
             data-role="top-image-round"
-          >
-            <img
+      >
+        <img
               src={normalizePath(`assets/images/${topImageAnim.current.topImage}`)}
               alt={topImageAnim.current.name}
-              style={{
-                userSelect: 'none',
+          style={{
+            userSelect: 'none',
                 pointerEvents: 'none',
                 display: 'block',
                 willChange: 'transform, opacity'
-              }}
-              draggable={false}
-            />
-          </div>
+          }}
+          draggable={false}
+        />
+      </div>
         )}
         {topImageAnim.next && (
-          <div
-            style={{
-              position: 'fixed',
+      <div
+        style={{
+          position: 'fixed',
               left: '50%',
               transform: 'translateX(-50%)',
               zIndex: 15,
@@ -1000,14 +1011,14 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             <img
               src={normalizePath(`assets/images/${topImageAnim.next.topImage}`)}
               alt={topImageAnim.next.name}
-              style={{
+          style={{
                 userSelect: 'none',
                 pointerEvents: 'none',
                 display: 'block',
                 willChange: 'transform, opacity'
-              }}
-              draggable={false}
-            />
+          }}
+          draggable={false}
+        />
           </div>
         )}
       </>
@@ -1061,7 +1072,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 src={normalizePath(`assets/images/${other.arImage}`)}
                 alt={other.name}
                 style={{ display: 'block', cursor: 'pointer' }}
-                draggable={false}
+          draggable={false}
                 tabIndex={0}
                 onClick={e => {
                   handleDesktopAnimalClick(other.name, correctAnimal, e)
@@ -1078,8 +1089,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 data-testid={`animal-img-${other.name}`}
                 data-animal={other.name}
                 data-animal-tag={other.name}
-              />
-            </div>
+        />
+      </div>
           </React.Fragment>
         )
       })()}
@@ -1092,7 +1103,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             top: '68%',
             left: '50%',
            // transform: 'translate(-50%, -50%)',
-            zIndex: 20,
+          zIndex: 20,
             pointerEvents: 'none',
             display: 'flex',
             flexDirection: 'column',
@@ -1116,8 +1127,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             alt={selectedAnimal}
             style={chosen2DAnimalStyle}
             draggable={false}
-          />
-        </div>
+        />
+      </div>
       )}
 
       {/* Dica WASD */}
