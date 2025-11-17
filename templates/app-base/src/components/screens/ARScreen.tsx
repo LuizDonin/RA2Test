@@ -135,22 +135,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         mediaStreamRef.current = stream
         videoRef.current = video
 
-        /*
-          Erro ao configurar câmera: AbortError: The play() request was interrupted by a new load request.
-          https://goo.gl/LdLk22
-
-          O que é isso?
-
-          Esse erro é disparado quando video.play() está sendo chamado, mas enquanto o play estava processando, video.srcObject ou src foi alterado, ou o elemento foi resetado. Por exemplo, se video.play() é chamado quase junto com uma mudança de srcObject, ocorre esse erro porque o vídeo está em transição. Esse não é um erro fatal, só significa que a tentativa de play() foi descartada/interrompida — normalmente, não impede a câmera de funcionar.
-
-          Veja: https://developer.chrome.com/blog/play-request-was-interrupted/
-
-          **Como lidar**
-          - Simplesmente pode ignorar essa mensagem se o vídeo aparece funcionando.
-          - Para eliminar: garanta que video.play() só seja chamado uma vez após srcObject ser alterado, e nunca mude srcObject enquanto play() está pendente.
-          - Opcional: usar try/catch separado só para video.play().
-        */
-
         try {
           await video.play()
         } catch (playErr) {
@@ -324,9 +308,29 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
   // --- SPAWN com logs explícitos e tratamento ---
   const spawnAnimals = useCallback((correctAnimal: AnimalType, wrongAnimal: AnimalType) => {
-    if (!arSceneRef.current || !sceneReady) return
+    if (!arSceneRef.current || !sceneReady) {
+      // eslint-disable-next-line no-console
+      console.warn('[ARScreen] Não é possível spawnar animais - scene não está pronta')
+      return
+    }
 
     clearAnimals()
+
+    const sceneEl = arSceneRef.current.getScene()
+    if (!sceneEl) {
+      // eslint-disable-next-line no-console
+      console.warn('[ARScreen] Scene element não encontrado')
+      return
+    }
+
+    // Garantir que a cena está visível
+    const sceneElement = sceneEl as HTMLElement
+    if (sceneElement) {
+      sceneElement.style.zIndex = '1'
+      sceneElement.style.display = 'block'
+      sceneElement.style.visibility = 'visible'
+      sceneElement.style.opacity = '1'
+    }
 
     const correctAnimalConfig = ANIMALS.find(a => a.name === correctAnimal)!
     const wrongAnimalConfig = ANIMALS.find(a => a.name === wrongAnimal)!
@@ -375,7 +379,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       correctEntityPosRef.current = { ...rightPos }
     }
 
-    // Garantir que os atributos data-animal estão corretos para identificação
+    // Garantir que os atributos data-animal estão corretos e forçar renderização
     setTimeout(() => {
       const leftEntity = document.getElementById(leftEntityId)
       const rightEntity = document.getElementById(rightEntityId)
@@ -391,6 +395,19 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         // eslint-disable-next-line no-console
         console.log('[ARScreen] Entity RIGHT configurado:', rightAnimal.name)
       }
+
+      // Forçar renderização da cena após adicionar entidades
+      const scene = sceneEl as any
+      if (scene && scene.renderer) {
+        // Forçar atualização do renderer
+        scene.renderer.setSize(window.innerWidth, window.innerHeight)
+        if (scene.camera) {
+          scene.renderer.render(scene.object3D, scene.camera)
+        }
+      }
+
+      // Disparar resize para forçar atualização
+      window.dispatchEvent(new Event('resize'))
     }, 200)
   }, [sceneReady, clearAnimals, normalizePath])
 
@@ -451,10 +468,50 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     spawnAnimals(correctAnimal.name, randomWrongAnimal.name)
   }, [spawnAnimals])
 
+  // Quando a cena estiver pronta, garantir que está visível e renderizando
   useEffect(() => {
-    if (sceneReady && currentRound === 0) {
-      startRound(0)
+    if (!sceneReady) return
+
+    const sceneEl = arSceneRef.current?.getScene()
+    if (!sceneEl) return
+
+    // Garantir que a cena está visível e renderizando
+    const ensureSceneVisible = () => {
+      if (sceneEl) {
+        // Garantir que a cena está visível (z-index correto)
+        const sceneElement = sceneEl as HTMLElement
+        if (sceneElement) {
+          sceneElement.style.zIndex = '1'
+          sceneElement.style.display = 'block'
+          sceneElement.style.visibility = 'visible'
+          sceneElement.style.opacity = '1'
+        }
+
+        // Forçar renderização
+        const scene = sceneEl as any
+        if (scene.renderer) {
+          scene.renderer.setSize(window.innerWidth, window.innerHeight)
+          if (scene.camera) {
+            scene.renderer.render(scene.object3D, scene.camera)
+          }
+        }
+
+        // Disparar evento de resize para forçar atualização
+        window.dispatchEvent(new Event('resize'))
+      }
     }
+
+    // Aguardar um pouco para garantir que tudo está pronto
+    setTimeout(() => {
+      ensureSceneVisible()
+      
+      // Aguardar mais um pouco e iniciar primeira rodada
+      setTimeout(() => {
+        if (currentRound === 0) {
+          startRound(0)
+        }
+      }, 300)
+    }, 200)
   }, [sceneReady, currentRound, startRound])
 
   const currentAnimal = currentRound < TOTAL_ROUNDS ? ANIMALS[currentRound] : null

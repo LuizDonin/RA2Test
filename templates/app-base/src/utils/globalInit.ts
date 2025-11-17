@@ -263,14 +263,17 @@ async function initializeAFrameScene(): Promise<void> {
     // Apenas criar a estrutura mínima para inicializar o A-Frame
     // Skybox, câmera, luzes e objetos serão adicionados pelo ARScreen
 
-    // Adicionar ao body (escondido inicialmente)
+    // Adicionar ao body
     scene.style.position = 'fixed'
     scene.style.top = '0'
     scene.style.left = '0'
     scene.style.width = '100%'
     scene.style.height = '100%'
-    scene.style.zIndex = '-100' // A-Frame abaixo de tudo
+    scene.style.zIndex = '1' // A-Frame acima do vídeo mas abaixo dos elementos UI
     scene.style.background = 'transparent'
+    scene.style.display = 'block'
+    scene.style.visibility = 'visible'
+    scene.style.opacity = '1'
     document.body.appendChild(scene)
 
     // Aguardar A-Frame inicializar completamente
