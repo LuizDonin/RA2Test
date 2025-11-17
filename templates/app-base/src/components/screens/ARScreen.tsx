@@ -88,57 +88,77 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
     async function setupCamera() {
       try {
+        // Sempre criar nova stream para garantir configuração de retrato
+        // Mesmo se já existir vídeo, vamos recriar com as configurações corretas
         const existingVideo = document.getElementById('arjs-video') as HTMLVideoElement
         if (existingVideo && existingVideo.srcObject) {
-          existingVideo.style.display = 'block'
-          existingVideo.style.visibility = 'visible'
-          existingVideo.style.opacity = '0'
-          existingVideo.style.zIndex = '0'
-          existingVideo.style.transition = 'opacity 0.6s ease-in'
-          videoRef.current = existingVideo
-          mediaStreamRef.current = existingVideo.srcObject as MediaStream
-          setArLoading(false)
-          setTimeout(() => {
-            setIsFadingIn(true)
-            if (existingVideo) {
-              existingVideo.style.opacity = '1'
-            }
-          }, 100)
-          return
+          // Parar stream existente
+          const existingStream = existingVideo.srcObject as MediaStream
+          existingStream.getTracks().forEach(track => track.stop())
         }
 
+        // Configuração para retrato: altura maior que largura
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 720 },
+            height: { ideal: 1280 },
             facingMode: { ideal: 'environment' }
           },
           audio: false
         })
 
-        const video = document.createElement('video')
-        video.id = 'arjs-video'
-        video.setAttribute('playsinline', '')
-        video.setAttribute('autoplay', '')
-        video.muted = true
-        video.style.position = 'fixed'
-        video.style.top = '0'
-        video.style.left = '0'
-        video.style.width = '100vw'
-        video.style.height = '100vh'
-        video.style.objectFit = 'cover'
-        video.style.zIndex = '0'
+        // Reutilizar vídeo existente ou criar novo
+        let video = existingVideo
+        if (!video) {
+          video = document.createElement('video')
+          video.id = 'arjs-video'
+          video.setAttribute('playsinline', '')
+          video.setAttribute('autoplay', '')
+          video.muted = true
+          video.style.position = 'fixed'
+          video.style.top = '0'
+          video.style.left = '0'
+          video.style.width = '100vw'
+          video.style.height = '100vh'
+          video.style.objectFit = 'cover'
+          video.style.zIndex = '0'
+          document.body.appendChild(video)
+        }
+
+        // Atualizar estilos
         video.style.display = 'block'
         video.style.visibility = 'visible'
         video.style.opacity = '0'
         video.style.transition = 'opacity 0.6s ease-in'
-        document.body.appendChild(video)
 
         video.srcObject = stream
         mediaStreamRef.current = stream
         videoRef.current = video
 
-        await video.play()
+        /*
+          Erro ao configurar câmera: AbortError: The play() request was interrupted by a new load request.
+          https://goo.gl/LdLk22
+
+          O que é isso?
+
+          Esse erro é disparado quando video.play() está sendo chamado, mas enquanto o play estava processando, video.srcObject ou src foi alterado, ou o elemento foi resetado. Por exemplo, se video.play() é chamado quase junto com uma mudança de srcObject, ocorre esse erro porque o vídeo está em transição. Esse não é um erro fatal, só significa que a tentativa de play() foi descartada/interrompida — normalmente, não impede a câmera de funcionar.
+
+          Veja: https://developer.chrome.com/blog/play-request-was-interrupted/
+
+          **Como lidar**
+          - Simplesmente pode ignorar essa mensagem se o vídeo aparece funcionando.
+          - Para eliminar: garanta que video.play() só seja chamado uma vez após srcObject ser alterado, e nunca mude srcObject enquanto play() está pendente.
+          - Opcional: usar try/catch separado só para video.play().
+        */
+
+        try {
+          await video.play()
+        } catch (playErr) {
+          // eslint-disable-next-line no-console
+          console.warn("[ARScreen] Falha ao chamar video.play():", playErr)
+          // Nada a fazer: se for AbortError, o fluxo geralmente segue normal
+        }
+
         setArLoading(false)
         setTimeout(() => {
           setIsFadingIn(true)
@@ -147,7 +167,20 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           }
         }, 100)
       } catch (err) {
-        console.error('Erro ao configurar câmera:', err)
+        // Se detectar um erro AbortError, explicar o motivo diretamente no console
+        if (
+          typeof window !== "undefined" &&
+          err &&
+          (err as any).name === "AbortError"
+        ) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "AbortError detectado ao configurar câmera (provavelmente play() interrompido por troca de srcObject). Veja https://goo.gl/LdLk22. Normalmente não impede o funcionamento do vídeo."
+          )
+        } else {
+          // eslint-disable-next-line no-console
+          console.error('Erro ao configurar câmera:', err)
+        }
         setArLoading(false)
         setTimeout(() => {
           setIsFadingIn(true)
@@ -191,20 +224,101 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       sceneEl.appendChild(camera)
     }
 
-    let cursor = camera.querySelector('a-cursor')
-    if (!cursor) {
-      cursor = document.createElement('a-cursor')
-      cursor.setAttribute('raycaster', 'objects: .clickable-animal')
-      cursor.setAttribute('geometry', 'primitive: ring; radiusInner: 0.02; radiusOuter: 0.03')
-      cursor.setAttribute('material', 'color: #4CC3D9; shader: flat')
-      camera.appendChild(cursor)
+    // Remover cursor visual - vamos usar touch events diretamente
+    const existingCursor = camera.querySelector('a-cursor')
+    if (existingCursor) {
+      existingCursor.remove()
     }
 
-    if (cursor) {
-      // eslint-disable-next-line no-console
-      console.log('[ARScreen] a-cursor (raycaster) presente na camera')
+    // Configurar raycaster na câmera para detectar toques
+    if (!camera.hasAttribute('raycaster')) {
+      camera.setAttribute('raycaster', 'objects: .clickable-animal; far: 100; interval: 0')
     }
-  }, [sceneReady])
+
+    // Adicionar listener de toque na cena usando AFrame raycaster
+    const handleTouchStart = (event: TouchEvent) => {
+      if (isAnimating) return
+      
+      const touch = event.touches[0]
+      if (!touch) return
+
+      // Converter coordenadas de toque para coordenadas normalizadas (-1 a 1)
+      const x = (touch.clientX / window.innerWidth) * 2 - 1
+      const y = -(touch.clientY / window.innerHeight) * 2 + 1
+      
+      // Fazer raycast manualmente usando THREE.js
+      const THREE = (window as any).THREE
+      if (!THREE) return
+      
+      const raycasterObj = new THREE.Raycaster()
+      const cameraObj = (camera as any).getObject3D('camera')
+      if (!cameraObj) return
+      
+      raycasterObj.setFromCamera(
+        new THREE.Vector2(x, y),
+        cameraObj
+      )
+
+      // Obter todos os objetos clicáveis
+      const clickableObjects = sceneEl.querySelectorAll('.clickable-animal')
+      const intersections: any[] = []
+      
+      clickableObjects.forEach((obj: any) => {
+        const obj3D = obj.getObject3D('mesh')
+        if (obj3D) {
+          const intersect = raycasterObj.intersectObject(obj3D, true)
+          if (intersect.length > 0) {
+            intersections.push({
+              object: obj3D,
+              el: obj,
+              distance: intersect[0].distance
+            })
+          }
+        }
+      })
+
+      // Ordenar por distância e pegar o mais próximo
+      if (intersections.length > 0) {
+        intersections.sort((a, b) => a.distance - b.distance)
+        const closest = intersections[0]
+        const animalName = closest.el.getAttribute('data-animal') as AnimalType
+        
+        // eslint-disable-next-line no-console
+        console.log('[ARScreen] Touch detectado!', {
+          animalName,
+          element: closest.el,
+          allAttributes: Array.from(closest.el.attributes).map((attr) => ({ 
+            name: (attr as Attr).name, 
+            value: (attr as Attr).value 
+          }))
+        })
+        
+        if (animalName && handleAnimalClickRef.current) {
+          // Encontrar qual é o animal correto da rodada atual
+          const currentAnimal = currentRound < TOTAL_ROUNDS ? ANIMALS[currentRound] : null
+          if (currentAnimal) {
+            // eslint-disable-next-line no-console
+            console.log('[ARScreen] Comparando:', {
+              clicked: animalName,
+              expected: currentAnimal.name,
+              isCorrect: animalName === currentAnimal.name
+            })
+            handleAnimalClickRef.current(animalName, currentAnimal.name, event)
+          }
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn('[ARScreen] Animal name não encontrado ou handler não disponível', { animalName, hasHandler: !!handleAnimalClickRef.current })
+        }
+      }
+    }
+
+    // Adicionar listener de toque na cena
+    sceneEl.addEventListener('touchstart', handleTouchStart as any, { passive: false })
+    
+    return () => {
+      sceneEl.removeEventListener('touchstart', handleTouchStart as any)
+    }
+  }, [sceneReady, isAnimating, currentRound])
 
   const handleAnimalClickRef = useRef<((clickedAnimal: AnimalType, correctAnimal: AnimalType, event?: Event) => void) | null>(null)
 
@@ -261,57 +375,23 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       correctEntityPosRef.current = { ...rightPos }
     }
 
-    // Adicione um intervalo para logs e debug para garantir que listeners estão sendo adicionados
+    // Garantir que os atributos data-animal estão corretos para identificação
     setTimeout(() => {
       const leftEntity = document.getElementById(leftEntityId)
       const rightEntity = document.getElementById(rightEntityId)
 
-      if (leftEntity && handleAnimalClickRef.current) {
+      if (leftEntity) {
+        leftEntity.setAttribute('data-animal', leftAnimal.name)
         // eslint-disable-next-line no-console
-        console.log('[DEBUG] Adicionando CLICK para LEFT (', leftAnimal.name, ')', leftEntity);
-
-        leftEntity.addEventListener('click', (e) => {
-          // eslint-disable-next-line no-console
-          console.log('[DEBUG] CLICK EVENT ENTITY LEFT', leftAnimal.name, e);
-          handleAnimalClickRef.current!(leftAnimal.name, correctAnimal, e)
-        });
-
-        leftEntity.addEventListener('mousedown', (e) => {
-          // eslint-disable-next-line no-console
-          console.log('[DEBUG] MOUSEDOWN LEFT', leftAnimal.name, e);
-          leftEntity.setAttribute('material', 'color: #CC0; opacity: 0.8;');
-          setTimeout(() => leftEntity.removeAttribute('material'), 200)
-        })
-        leftEntity.addEventListener('touchstart', (e) => {
-          // eslint-disable-next-line no-console
-          console.log('[DEBUG] TOUCHSTART LEFT', leftAnimal.name, e);
-          handleAnimalClickRef.current!(leftAnimal.name, correctAnimal, e)
-        });
+        console.log('[ARScreen] Entity LEFT configurado:', leftAnimal.name)
       }
 
-      if (rightEntity && handleAnimalClickRef.current) {
+      if (rightEntity) {
+        rightEntity.setAttribute('data-animal', rightAnimal.name)
         // eslint-disable-next-line no-console
-        console.log('[DEBUG] Adicionando CLICK para RIGHT (', rightAnimal.name, ')', rightEntity);
-
-        rightEntity.addEventListener('click', (e) => {
-          // eslint-disable-next-line no-console
-          console.log('[DEBUG] CLICK EVENT ENTITY RIGHT', rightAnimal.name, e);
-          handleAnimalClickRef.current!(rightAnimal.name, correctAnimal, e)
-        });
-
-        rightEntity.addEventListener('mousedown', (e) => {
-          // eslint-disable-next-line no-console
-          console.log('[DEBUG] MOUSEDOWN RIGHT', rightAnimal.name, e);
-          rightEntity.setAttribute('material', 'color: #CC0; opacity: 0.8;');
-          setTimeout(() => rightEntity.removeAttribute('material'), 200)
-        })
-        rightEntity.addEventListener('touchstart', (e) => {
-          // eslint-disable-next-line no-console
-          console.log('[DEBUG] TOUCHSTART RIGHT', rightAnimal.name, e);
-          handleAnimalClickRef.current!(rightAnimal.name, correctAnimal, e)
-        });
+        console.log('[ARScreen] Entity RIGHT configurado:', rightAnimal.name)
       }
-    }, 200) // suficiente para garantir renderização dos entities no DOM
+    }, 200)
   }, [sceneReady, clearAnimals, normalizePath])
 
   // Handler de clique customizado com log
