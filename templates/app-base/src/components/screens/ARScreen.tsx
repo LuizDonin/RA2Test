@@ -56,29 +56,33 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   const [feedbackType, setFeedbackType] = useState<'success' | 'error' | null>(null)
   const [isAnimating, setIsAnimating] = useState(false)
 
+  // For top image transitions between rounds (custom logic)
+  const [topImageAnim, setTopImageAnim] = useState<{
+    current: AnimalConfig | null,
+    next: AnimalConfig | null,
+    phase: 'show-current' | 'hide-current' | 'show-next' | 'idle'
+  }>({ current: ANIMALS[0], next: null, phase: 'show-current' })
+
+  // For pausing until AR images are loaded before allowing interaction/spawn
+  const [arImagesLoaded, setArImagesLoaded] = useState<{ [animal in AnimalType]?: boolean }>({})
+  const [pendingARImages, setPendingARImages] = useState<{ correct: AnimalType | null, wrong: AnimalType | null }>({ correct: null, wrong: null })
+  const [canDisplayAnimals, setCanDisplayAnimals] = useState(false)
+  // To control timeout for animation transitions
+  const animTimeoutRef = useRef<number | null>(null)
+
   const arSceneRef = useRef<ARSceneAFrameRef>(null)
   const animalEntitiesRef = useRef<{ left: string | null; right: string | null }>({ left: null, right: null })
   const correctEntityIdRef = useRef<string | null>(null)
-  const correctEntityPosRef = useRef<{x: number, y: number, z: number}>({x: -1.5, y: 0, z: -10})
+  const correctEntityPosRef = useRef<{ x: number, y: number, z: number }>({ x: -1.5, y: 0, z: -10 })
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
 
-  // Corrige problema de múltipla referência de círculos (era: animalScreenCircles fica duplicado quando animaisWorldPosRef é duplicada)
-  // Usar IDs reais únicos para cada animal na cena e garantir 1 círculo por entidade AR criada.
-  // Salvamos também o "animalName" corretamente vinculado ao ID.
-
   const animalsWorldPosRef = useRef<{
-    left: {x:number,y:number,z:number}|null,
-    right: {x:number,y:number,z:number}|null,
-  }>({left:null,right:null})
-
-  // Mantemos um mapeamento global de id da entidade => animal
+    left: { x: number, y: number, z: number } | null,
+    right: { x: number, y: number, z: number } | null,
+  }>({ left: null, right: null })
   const entityIdToAnimal = useRef<Record<string, AnimalType>>({})
 
-  /**
-   * World-to-screen helper. Result: [{ x, y, entityId, animalName, ... }]
-   * Garante 1 círculo por entidade visível, com dados _corretos_ de animal.
-   */
   function worldPositionsToScreenPositions(canvas: HTMLCanvasElement | null, camObj: any) {
     if (!canvas) return []
     const res: Array<{
@@ -94,27 +98,23 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     const height = canvas.height
     const THREE = (window as any).THREE
     if (!THREE || !camObj) return []
-
-    const ANIMAL_SCREEN_RADIUS = 37 // Antes era 25; aumentado
-
-    // Corrigido: gerar círculos _exatamente_ por entidade AR gerada (left/right).
-    const animalsToCheck: Array<{id: string|null, pos: {x:number,y:number,z:number}|null, key: string, color: string}> = [
-      { id: animalEntitiesRef.current.left,  pos: animalsWorldPosRef.current.left,  key: 'left',  color: 'rgba(33, 99, 255, 0.6)' },
+    const ANIMAL_SCREEN_RADIUS = 80
+    const animalsToCheck: Array<{ id: string | null, pos: { x: number, y: number, z: number } | null, key: string, color: string }> = [
+      { id: animalEntitiesRef.current.left, pos: animalsWorldPosRef.current.left, key: 'left', color: 'rgba(33, 99, 255, 0.6)' },
       { id: animalEntitiesRef.current.right, pos: animalsWorldPosRef.current.right, key: 'right', color: 'rgba(145, 200, 255, 0.6)' }
     ]
 
-    for (const {id, pos, key, color} of animalsToCheck) {
+    for (const { id, pos, key, color } of animalsToCheck) {
       if (!id || !pos) continue
       const vector = new THREE.Vector3(pos.x, pos.y, pos.z)
       vector.project(camObj)
       const sx = (vector.x + 1) / 2 * width
       const sy = (1 - (vector.y + 1) / 2) * height
-      // animalName bem demarcado: pega do mapeamento salvo por entity, nunca reflete/buga
       const nameFromMapping = entityIdToAnimal.current[id] as AnimalType
       res.push({
         x: sx,
         y: sy,
-        key: id, // Garante cada círculo é único por entidade (não por left/right!)
+        key: id,
         color,
         animalName: nameFromMapping ?? 'gato',
         screenPxRadius: ANIMAL_SCREEN_RADIUS,
@@ -222,11 +222,9 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   }, [usarVideo])
 
   const clearAnimals = useCallback(() => {
-    // Limpa o mapeamento de entidades para animal também!
     if (animalEntitiesRef.current.left && arSceneRef.current) {
       const leftId = animalEntitiesRef.current.left
       arSceneRef.current.removeEntity(leftId)
-      // Garantir remoção do DOM também
       const leftEntity = document.getElementById(leftId)
       if (leftEntity) {
         leftEntity.remove()
@@ -236,7 +234,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     if (animalEntitiesRef.current.right && arSceneRef.current) {
       const rightId = animalEntitiesRef.current.right
       arSceneRef.current.removeEntity(rightId)
-      // Garantir remoção do DOM também
       const rightEntity = document.getElementById(rightId)
       if (rightEntity) {
         rightEntity.remove()
@@ -247,7 +244,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     animalsWorldPosRef.current.left = null
     animalsWorldPosRef.current.right = null
     entityIdToAnimal.current = {}
-    
+
     // Limpar qualquer entidade órfã com classe clickable-animal
     const sceneEl = arSceneRef.current?.getScene()
     if (sceneEl) {
@@ -298,7 +295,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         cameraObj
       )
 
-      // Clicar no animal correto: sempre ler animal do atributo fresh + id verificado
       const clickableObjects = sceneEl.querySelectorAll('.clickable-animal')
       const intersections: any[] = []
       clickableObjects.forEach((obj: any) => {
@@ -318,17 +314,13 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       if (intersections.length > 0) {
         intersections.sort((a, b) => a.distance - b.distance)
         const closest = intersections[0]
-        // SANITIZED: animalName agora _exatamente_ o atribuído à entidade por seu ID, não por closure
         const entityId = closest.el.id
         let animalName: AnimalType | null = null
         if (entityId && entityIdToAnimal.current[entityId]) {
           animalName = entityIdToAnimal.current[entityId]
         } else {
-          // fallback legacy (evita bug caso entity mapping caiu)
           animalName = (closest.el.getAttribute('data-animal') as AnimalType) || null
         }
-
-        // Sempre valor de round REAL, não stale closure
         const logicCurrentRound = currentRoundRef.current
         const currentAnimal = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
         let expectedAnimal: AnimalType | null = null
@@ -352,12 +344,20 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
   const handleAnimalClickRef = useRef<((clickedAnimal: AnimalType, correctAnimal: AnimalType, event?: Event) => void) | null>(null)
 
-  // --- SPAWN corrigido: faz mapeamento preciso entidade=>animal, e armazena só 1 de cada lado ---
-
+  // SPAWN: agora espera o "canDisplayAnimals" = true, só spawna (adiciona entidades) quando ambas imagens de AR do round já carregaram.
   const spawnAnimals = useCallback((correctAnimal: AnimalType, wrongAnimal: AnimalType) => {
+    setPendingARImages({ correct: correctAnimal, wrong: wrongAnimal })
+    setCanDisplayAnimals(false)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingARImages.correct || !pendingARImages.wrong) return
+    const bothLoaded =
+      arImagesLoaded[pendingARImages.correct] &&
+      arImagesLoaded[pendingARImages.wrong]
+    if (!bothLoaded) return
+
     if (!arSceneRef.current || !sceneReady) {
-      // eslint-disable-next-line no-console
-      console.warn('[ARScreen] Não é possível spawnar animais - scene não está pronta')
       return
     }
 
@@ -365,12 +365,9 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
     const sceneEl = arSceneRef.current.getScene()
     if (!sceneEl) {
-      // eslint-disable-next-line no-console
-      console.warn('[ARScreen] Scene element não encontrado')
       return
     }
 
-    // Garantir que a cena está visível
     const sceneElement = sceneEl as HTMLElement
     if (sceneElement) {
       sceneElement.style.zIndex = '1'
@@ -379,8 +376,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       sceneElement.style.opacity = '1'
     }
 
-    const correctAnimalConfig = ANIMALS.find(a => a.name === correctAnimal)!
-    const wrongAnimalConfig = ANIMALS.find(a => a.name === wrongAnimal)!
+    const correctAnimalConfig = ANIMALS.find(a => a.name === pendingARImages.correct)!
+    const wrongAnimalConfig = ANIMALS.find(a => a.name === pendingARImages.wrong)!
 
     const correctOnLeft = Math.random() > 0.5
 
@@ -390,42 +387,39 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     const leftPos = { x: -1.5, y: 0, z: INITIAL_ANIMAL_Z }
     const rightPos = { x: 1.5, y: 0, z: INITIAL_ANIMAL_Z }
 
-    // Gera entity id, depois salva mapeamento id=>animalName preciso.
     const leftEntityId = arSceneRef.current.addEntity({
       geometry: 'primitive: plane',
       material: `src: ${normalizePath(`assets/images/${leftAnimal.arImage}`)}; transparent: true; side: double`,
       position: `${leftPos.x} ${leftPos.y} ${leftPos.z}`,
-      scale: '1 1 1',
+      scale: '0.2 0.2 0.2',
       'look-at': '[camera]',
       class: 'clickable-animal',
       'data-animal': leftAnimal.name,
+      'animation__scalein': 'property: scale; to: 1 1 1; dur: 400; easing: easeOutElastic; loop: false; startEvents: animscalein',
       'animation__scale': 'property: scale; to: 1.1 1.1 1.1; dur: 200; startEvents: mouseenter',
       'animation__scaleback': 'property: scale; to: 1 1 1; dur: 200; startEvents: mouseleave'
     })
-
     const rightEntityId = arSceneRef.current.addEntity({
       geometry: 'primitive: plane',
       material: `src: ${normalizePath(`assets/images/${rightAnimal.arImage}`)}; transparent: true; side: double`,
       position: `${rightPos.x} ${rightPos.y} ${rightPos.z}`,
-      scale: '1 1 1',
+      scale: '0.2 0.2 0.2',
       'look-at': '[camera]',
       class: 'clickable-animal',
       'data-animal': rightAnimal.name,
+      'animation__scalein': 'property: scale; to: 1 1 1; dur: 400; easing: easeOutElastic; loop: false; startEvents: animscalein',
       'animation__scale': 'property: scale; to: 1.1 1.1 1.1; dur: 200; startEvents: mouseenter',
       'animation__scaleback': 'property: scale; to: 1 1 1; dur: 200; startEvents: mouseleave'
     })
 
     animalEntitiesRef.current.left = leftEntityId
     animalEntitiesRef.current.right = rightEntityId
-    animalsWorldPosRef.current.left = {...leftPos}
-    animalsWorldPosRef.current.right = {...rightPos}
-
-    // Mapeamento correto id => nome do animal, usado nas projeções e no clique.
+    animalsWorldPosRef.current.left = { ...leftPos }
+    animalsWorldPosRef.current.right = { ...rightPos }
     entityIdToAnimal.current = {
       [leftEntityId]: leftAnimal.name as AnimalType,
       [rightEntityId]: rightAnimal.name as AnimalType
     }
-
     if (correctOnLeft) {
       correctEntityIdRef.current = leftEntityId
       correctEntityPosRef.current = { ...leftPos }
@@ -433,19 +427,17 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       correctEntityIdRef.current = rightEntityId
       correctEntityPosRef.current = { ...rightPos }
     }
-
-    // FORÇA, após timeout, sincronia do atributo data-animal (garante click A-Frame correto)
     setTimeout(() => {
       const leftEntity = document.getElementById(leftEntityId)
       const rightEntity = document.getElementById(rightEntityId)
-
       if (leftEntity) {
         leftEntity.setAttribute('data-animal', leftAnimal.name)
+        leftEntity.emit('animscalein')
       }
       if (rightEntity) {
         rightEntity.setAttribute('data-animal', rightAnimal.name)
+        rightEntity.emit('animscalein')
       }
-
       const scene = sceneEl as any
       if (scene && scene.renderer) {
         scene.renderer.setSize(window.innerWidth, window.innerHeight)
@@ -454,17 +446,19 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         }
       }
       window.dispatchEvent(new Event('resize'))
+      setCanDisplayAnimals(true)
     }, 200)
-  }, [sceneReady, clearAnimals, normalizePath])
+    setPendingARImages({ correct: null, wrong: null })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingARImages, arImagesLoaded, clearAnimals, sceneReady, normalizePath])
 
-  // Handler: sempre referência fiel via idToAnimal e roundRef!
+  // Handler: agora NÃO move a topimage no clique! Só move na transição de fase.
   const handleAnimalClick = useCallback((clickedAnimal: AnimalType, _correctAnimalIgnored: AnimalType, event?: Event) => {
     if (isAnimating) return
 
     setIsAnimating(true)
     playClickSound()
 
-    // Use SÓ o round lógico real, nunca corrente de closure de render!
     const logicCurrentRound = currentRoundRef.current
     const currentAnimal = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
     let correctAnimal: AnimalType | null = null
@@ -475,96 +469,113 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     const isCorrect = clickedAnimal === correctAnimal
     setSelectedAnimal(clickedAnimal)
     setFeedbackType(isCorrect ? 'success' : 'error')
+    clearAnimals()
 
     if (isCorrect) {
       playSuccessSound()
+      // NÃO faz nada com topImage aqui!
+      if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current)
+      animTimeoutRef.current = window.setTimeout(() => {
+        // Inicia transição de sumir imagem atual para o topo
+        setTopImageAnim(prev => ({
+          ...prev,
+          phase: 'hide-current'
+        }))
+        // Aguarda a saída (animação .6s) e troca de fase
+        setTimeout(() => {
+          setTopImageAnim(prev => ({
+            ...prev,
+            next: ANIMALS[logicCurrentRound + 1] ?? null,
+            phase: 'show-next'
+          }))
+          // Aguarda próxima imagem surgir (animação .6s)
+          setTimeout(() => {
+            setTopImageAnim({
+              current: ANIMALS[logicCurrentRound + 1] ?? null,
+              next: null,
+              phase: (logicCurrentRound + 1) < TOTAL_ROUNDS ? 'show-current' : 'idle'
+            })
+            setCurrentRound(prev => prev + 1)
+            setSelectedAnimal(null)
+            setFeedbackType(null)
+            setIsAnimating(false)
+
+            if ((logicCurrentRound + 1) < TOTAL_ROUNDS) {
+              const nextAnimal = ANIMALS[logicCurrentRound + 1]
+              const correctAnimalForNextRound = nextAnimal.name
+              const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForNextRound)
+              const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
+              setPendingARImages({
+                correct: correctAnimalForNextRound,
+                wrong: randomWrongAnimal.name
+              })
+              setCanDisplayAnimals(false)
+            }
+          }, 600)
+        }, 600)
+      }, 800)
     } else {
       playErrorSound()
-    }
-
-    clearAnimals()
-
-    setTimeout(() => {
-      setSelectedAnimal(null)
-      setFeedbackType(null)
-      setIsAnimating(false)
-      setCurrentRound(prev => {
-        const nextRound = prev + 1
-        if (nextRound < TOTAL_ROUNDS) {
-          setTimeout(() => {
-            const nextAnimal = ANIMALS[nextRound]
-            const correctAnimalForNextRound = nextAnimal.name
-            const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForNextRound)
-            const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
-            spawnAnimals(correctAnimalForNextRound, randomWrongAnimal.name)
-          }, 100)
+      setTimeout(() => {
+        setSelectedAnimal(null)
+        setFeedbackType(null)
+        setIsAnimating(false)
+        const curr = currentRoundRef.current < TOTAL_ROUNDS ? ANIMALS[currentRoundRef.current] : null
+        if (curr) {
+          const correctAnimalForRound = curr.name
+          const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForRound)
+          const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
+          setPendingARImages({ correct: correctAnimalForRound, wrong: randomWrongAnimal.name })
+          setCanDisplayAnimals(false)
         }
-        return nextRound
-      })
-    }, 2000)
-  }, [isAnimating, clearAnimals, spawnAnimals])
+      }, 1700)
+    }
+  }, [isAnimating, clearAnimals])
 
   useEffect(() => {
     handleAnimalClickRef.current = handleAnimalClick
   }, [handleAnimalClick])
 
-  const startRound = useCallback((roundIndex: number) => {
-    if (roundIndex >= TOTAL_ROUNDS) {
-      setCurrentRound(0)
-      return
-    }
-    const currentAnimal = ANIMALS[roundIndex]
-    const correctAnimalForRound = currentAnimal.name
-    const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForRound)
-    const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
-    spawnAnimals(correctAnimalForRound, randomWrongAnimal.name)
-  }, [spawnAnimals])
+  // Pre-carrega as imagens AR do round para evitar "white rectangle"
+  const preloadARImages = useCallback((correct: AnimalType, wrong: AnimalType) => {
+    [correct, wrong].forEach(animalName => {
+      const img = new window.Image()
+      img.src = normalizePath(`assets/images/${ANIMALS.find(a => a.name === animalName)!.arImage}`)
+      img.onload = () => {
+        setArImagesLoaded(loaded => ({ ...loaded, [animalName]: true }))
+      }
+    })
+  }, [normalizePath])
 
+  // Inicializa topImageAnim corretamente quando muda currentRound (inclusive no início)
   useEffect(() => {
     if (!sceneReady) return
-    const sceneEl = arSceneRef.current?.getScene()
-    if (!sceneEl) return
-    const ensureSceneVisible = () => {
-      if (sceneEl) {
-        const sceneElement = sceneEl as HTMLElement
-        if (sceneElement) {
-          sceneElement.style.zIndex = '1'
-          sceneElement.style.display = 'block'
-          sceneElement.style.visibility = 'visible'
-          sceneElement.style.opacity = '1'
-        }
-        const scene = sceneEl as any
-        if (scene.renderer) {
-          scene.renderer.setSize(window.innerWidth, window.innerHeight)
-          if (scene.camera) {
-            scene.renderer.render(scene.object3D, scene.camera)
-          }
-        }
-        window.dispatchEvent(new Event('resize'))
-      }
+
+    // Ao terminar as rodadas, esconde topimage
+    if (currentRound >= TOTAL_ROUNDS) {
+      setTopImageAnim({ current: null, next: null, phase: 'idle' })
+      return
     }
-    setTimeout(() => {
-      ensureSceneVisible()
-      setTimeout(() => {
-        if (currentRound === 0) {
-          startRound(0)
-        }
-      }, 300)
-    }, 200)
-  }, [sceneReady, currentRound, startRound])
 
-  // Sempre derive do ref para overlay visual
+    // SÓ carrega animais, não mexe top image aqui
+    setCanDisplayAnimals(false)
+    const curr = currentRound < TOTAL_ROUNDS ? ANIMALS[currentRound] : null
+    if (curr) {
+      const correctAnimalForRound = curr.name
+      const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForRound)
+      const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
+      preloadARImages(correctAnimalForRound, randomWrongAnimal.name)
+      setPendingARImages({ correct: correctAnimalForRound, wrong: randomWrongAnimal.name })
+    }
+    // Atualiza a topImageAnim somente quando mudamos de fase (via handleAnimalClick)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRound, sceneReady])
+
+  // Same as before: overlays/canvas/etc
+
   const logicCurrentRound = currentRoundRef.current
-  const currentAnimal = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
-  const topImage = currentAnimal ? normalizePath(`assets/images/${currentAnimal.topImage}`) : ''
-  const selectedAnimalImage = selectedAnimal ? normalizePath(`assets/images/${ANIMALS.find(a => a.name === selectedAnimal)!.arImage}`) : ''
-  const feedbackImage = feedbackType === 'success'
-    ? normalizePath('assets/images/estrelas.png')
-    : feedbackType === 'error'
-    ? normalizePath('assets/images/erro.png')
-    : ''
+  const desktopTestMode = !usarVideo
 
-  // Ref para o canvas de debug
   const debugCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const [animalScreenCircles, setAnimalScreenCircles] = useState<
     Array<{ x: number; y: number; key: string; color: string; animalName: AnimalType; screenPxRadius: number; entityId: string }>
@@ -594,18 +605,14 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         setAnimalScreenCircles([])
         return
       }
-
-      // Gera UI só para entidades (circle == strictly entity)
       const circles = worldPositionsToScreenPositions(canvas, camObj)
       setAnimalScreenCircles(circles)
-
-      // Aumente o raio desenhado para debug para bater com o botão invisível
       circles.forEach(({ x, y }) => {
         ctx.beginPath()
         ctx.arc(x, y, 37, 0, Math.PI * 2)
-        ctx.fillStyle = 'rgba(0,0,0,0.045)' // transparente para debug visual sutil
+        ctx.fillStyle = 'rgba(0,0,0,0)'
         ctx.fill()
-        ctx.strokeStyle = 'rgba(33, 99, 255, 0.13)'
+        ctx.strokeStyle = 'rgba(0,0,0,0)'
         ctx.lineWidth = 2
         ctx.stroke()
       })
@@ -704,9 +711,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     }
   }, [sceneReady, currentRound])
 
-  const desktopTestMode = !usarVideo
-
-  // Handler desktop: consulta pelo id mapping correto, nunca por closure/config do round.
   const handleDesktopAnimalClick = (animal: AnimalType, _unusedCorrect: AnimalType, event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
     const logicCurrentRound = currentRoundRef.current
     const curr = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
@@ -719,7 +723,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     }
   }
 
-  // Handler Circle Overlay: AQUI também, lookup correto do nome pelo id.
   const handleCircleButtonClick = useCallback((circle: typeof animalScreenCircles[number], event: React.MouseEvent | React.TouchEvent) => {
     const logicCurrentRound = currentRoundRef.current
     const curr = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
@@ -728,14 +731,98 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     event.stopPropagation()
     event.preventDefault()
     const expectedAnimal = curr.name
-    // No click, pega animal diretamente pelo círculo/entidade (sem bug de mapping!)
     if (handleAnimalClickRef.current) {
       handleAnimalClickRef.current(circle.animalName, expectedAnimal, event.nativeEvent)
     }
   }, [isAnimating, animalScreenCircles])
 
+  const canShowAnimalButtons = sceneReady && animalScreenCircles.length > 0 && canDisplayAnimals && (!selectedAnimal || feedbackType === 'error')
+
+  // TopImage animation helpers
+  function getTopImageStyle(anim: typeof topImageAnim, kind: 'current' | 'next') {
+    // animation phases: show-current | hide-current | show-next | idle
+
+    // hide-current/top: moves much further up offscreen (e.g., -400px)
+    if (anim.phase === 'show-current' && kind === 'current') {
+      // Entrando
+      return {
+        top: 30,
+        //transition: 'top 0.6s cubic-bezier(.49,1.8,.55,1.04), opacity 0.35s'
+      }
+    }
+    if (anim.phase === 'hide-current' && kind === 'current') {
+      // Saindo pra cima, muito além da tela
+      return {
+        top: '-400px',
+        transition: 'top 0.6s cubic-bezier(.49,1.8,.55,1.04), opacity 0.35s'
+      }
+    }
+
+    // show-next: a próxima topimage começa bem acima da tela, e desce em movimento linear até 30px
+    if (anim.phase === 'show-next' && kind === 'next') {
+      return {
+        top: '-160px', // fora da tela (ajuste conforme necessário)
+        transition: 'top 0s', // sem transição instantânea para posição inicial
+        willChange: 'top'
+      }
+    }
+    if (anim.phase === 'show-next' && kind === 'current') {
+      // Fica "sumido" enquanto a próxima entra
+      return {
+        top: '-2000px',
+        transition: 'top 0.01s'
+      }
+    }
+    if (anim.phase === 'show-current' && kind === 'next') {
+      return { top: '-2000px', transition: 'top 0.01s' }
+    }
+    if (anim.phase === 'idle') {
+      return { top: '-2000px', transition: 'top 0.01s' }
+    }
+    // Default
+    return { top: '-2000px', transition: 'top 0.01s' }
+  }
+
+  // Estado auxiliar para ativar transição linear da topimage "next"
+  const [showNextTopImageLinearAnim, setShowNextTopImageLinearAnim] = useState(false)
+
+  // Handle animation for next topImage: entrada linear vinda do topo da tela para 30px
+  useEffect(() => {
+    if (topImageAnim.phase === 'show-next') {
+      // Inicialmente: começa acima da tela (top: -160px), sem animação/transição
+      setShowNextTopImageLinearAnim(false)
+      // Pequeeeeno delay antes de ativar animação (assegura que o DOM esteja realmente no top: -160px)
+      setTimeout(() => {
+        setShowNextTopImageLinearAnim(true)
+        // Após o tempo da animação linear (0.48s no transition do style abaixo), troca next->current
+        setTimeout(() => {
+          setTopImageAnim(prev => ({
+            ...prev,
+            // Troca: next -> current
+            current: prev.next,
+            next: null,
+            phase: prev.next ? 'show-current' : 'idle'
+          }))
+          setShowNextTopImageLinearAnim(false)
+        }, 480)
+      }, 20)
+    }
+  }, [topImageAnim.phase])
+
+  // --- render ---
+  const feedbackImage =
+    feedbackType === 'success'
+      ? normalizePath('assets/images/estrelas.png')
+      : feedbackType === 'error'
+      ? normalizePath('assets/images/erro.png')
+      : ''
+
+  const selectedAnimalImage = selectedAnimal
+    ? normalizePath(`assets/images/${ANIMALS.find(a => a.name === selectedAnimal)!.arImage}`)
+    : ''
+
   return (
-    <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{position:'fixed'}}>
+    <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{ position: 'fixed' }}>
       <LandscapeBlocker />
 
       {/* Canvas de debug de posição dos animais */}
@@ -756,7 +843,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       />
 
       {/* Overlay dos botões "círculos" – cada círculo agora 1-para-1 com uma entidade animal */}
-      {sceneReady && animalScreenCircles.length > 0 && !selectedAnimal && (
+      {canShowAnimalButtons && (
         <div
           style={{
             position: 'fixed',
@@ -785,13 +872,10 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 width: `${circle.screenPxRadius * 2}px`,
                 height: `${circle.screenPxRadius * 2}px`,
                 borderRadius: '100%',
-                // background: circle.color, // Removido, botão ficará invisível!
-                // border: '2.5px solid #2163ff', // Removido, botão invisível
-                // boxShadow: '0 0 12px rgba(80,110,250,0.13)', // Removido
                 zIndex: 122,
                 cursor: isAnimating ? 'default' : 'pointer',
                 pointerEvents: isAnimating ? 'none' : 'auto',
-                opacity: 0, // botão totalmente invisível visualmente, mas interativo
+                opacity: 0,
                 userSelect: 'none',
                 outline: 'none',
                 transition: 'background .14s'
@@ -802,9 +886,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
               data-animal-tag={circle.animalName}
               data-entity-id={circle.entityId}
               data-testid={`animal-circle-btn-${circle.animalName}`}
-            >
-              {/* <span style={{fontWeight:700,fontSize:18, color:'#fff'}}>{circle.animalName}</span> */}
-            </button>
+            />
           ))}
         </div>
       )}
@@ -827,37 +909,76 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         }}
       />
 
-      {/* Top image */}
-      {currentAnimal && !selectedAnimal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 15,
-            pointerEvents: 'none',
-            background: 'rgba(255,255,255,0.2)',
-            padding: '0.5rem'
-          }}
-          data-role="top-image-round"
-        >
-          <img
-            src={topImage}
-            alt={currentAnimal.name}
+      {/* Top image round: faz animação para cima/baixo entre fases */}
+      <>
+        {/* Imagem atual (topImageAnim.current) */}
+        {topImageAnim.current && (
+          <div
             style={{
-              userSelect: 'none',
+              position: 'fixed',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 15,
               pointerEvents: 'none',
-              display: 'block'
+              background: 'rgba(0,0,0,0.0)',
+              padding: '0.5rem',
+              transition: getTopImageStyle(topImageAnim, 'current').transition,
+              top: getTopImageStyle(topImageAnim, 'current').top,
+              opacity: topImageAnim.phase === 'idle' ? 0 : 1
             }}
-            draggable={false}
-          />
-        </div>
-      )}
+            data-role="top-image-round"
+          >
+            <img
+              src={normalizePath(`assets/images/${topImageAnim.current.topImage}`)}
+              alt={topImageAnim.current.name}
+              style={{
+                userSelect: 'none',
+                pointerEvents: 'none',
+                display: 'block',
+                willChange: 'transform, opacity'
+              }}
+              draggable={false}
+            />
+          </div>
+        )}
+        {/* Se o próximo já está preparado, renderiza, surge de cima (linearmente) */}
+        {topImageAnim.next && (
+          <div
+            style={{
+              position: 'fixed',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 15,
+              pointerEvents: 'none',
+              background: 'rgba(0,0,0,0.0)',
+              padding: '0.5rem',
+              // Estilo para entrada linear: se showNextTopImageLinearAnim = true, faz transição para top:30px usando linear
+              top: showNextTopImageLinearAnim ? 30 : getTopImageStyle(topImageAnim, 'next').top,
+              transition: showNextTopImageLinearAnim
+                ? 'top 0.48s linear'
+                : (getTopImageStyle(topImageAnim, 'next').transition || undefined),
+              willChange: 'top',
+              opacity: topImageAnim.phase === 'idle' ? 0 : 1
+            }}
+            data-role="top-image-round-next"
+          >
+            <img
+              src={normalizePath(`assets/images/${topImageAnim.next.topImage}`)}
+              alt={topImageAnim.next.name}
+              style={{
+                userSelect: 'none',
+                pointerEvents: 'none',
+                display: 'block',
+                willChange: 'transform, opacity'
+              }}
+              draggable={false}
+            />
+          </div>
+        )}
+      </>
 
       {/* Mostra animais para teste desktop explicitamente, com logs onClick */}
-      {sceneReady && !selectedAnimal && desktopTestMode && (() => {
-        // Use round lógico de ref SEMPRE!
+      {sceneReady && (!selectedAnimal || feedbackType === 'error') && desktopTestMode && (() => {
         const logicCurrentRound = currentRoundRef.current
         const idx = logicCurrentRound % ANIMALS.length
         const curr = ANIMALS[idx]
@@ -979,6 +1100,31 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           Use W A S D (e setas) para mover o animal correto na cena AR (use para teste no desktop)
         </div>
       )}
+
+      {/* Preload das imagens AR para não aparecer "quadrado branco" */}
+      {(() => {
+        if (!pendingARImages.correct || !pendingARImages.wrong) return null
+        const arImgSrcs = [
+          normalizePath(`assets/images/${ANIMALS.find(a => a.name === pendingARImages.correct)!.arImage}`),
+          normalizePath(`assets/images/${ANIMALS.find(a => a.name === pendingARImages.wrong)!.arImage}`)
+        ]
+        return (
+          <div style={{ display: 'none' }}>
+            {arImgSrcs.map((src, idx) => (
+              <img
+                src={src}
+                key={src}
+                alt={`preload_ar_${idx}`}
+                onLoad={() => {
+                  const animalName =
+                    idx === 0 ? pendingARImages.correct : pendingARImages.wrong
+                  setArImagesLoaded(loaded => ({ ...loaded, [animalName!]: true }))
+                }}
+              />
+            ))}
+          </div>
+        )
+      })()}
 
       <style>
         {`
