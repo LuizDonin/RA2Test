@@ -13,6 +13,9 @@ export interface ARSceneAFrameRef {
   setCameraFacing: (facing: 'environment' | 'user') => void
 }
 
+// Contador global para garantir IDs únicos
+let entityIdCounter = 0
+
 export const ARSceneAFrame = forwardRef<ARSceneAFrameRef, ARSceneAFrameProps>(({
   className = '',
   onSceneReady
@@ -55,7 +58,10 @@ export const ARSceneAFrame = forwardRef<ARSceneAFrameRef, ARSceneAFrameProps>(({
         Object.keys(data).forEach(key => {
           entity.setAttribute(key, typeof data[key] === 'object' ? Object.entries(data[key]).map(([k, v]) => `${k}: ${v}`).join('; ') : data[key])
         })
-        entity.id = `entity-${Date.now()}`
+        // Usar contador + timestamp + número aleatório para garantir unicidade
+        entityIdCounter++
+        const uniqueId = `entity-${Date.now()}-${entityIdCounter}-${Math.random().toString(36).substr(2, 9)}`
+        entity.id = uniqueId
         sceneEl.appendChild(entity)
         return entity.id
       }

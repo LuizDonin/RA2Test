@@ -63,22 +63,32 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
 
-  const animalsWorldPosRef = useRef<{ left: {x:number,y:number,z:number}|null, right: {x:number,y:number,z:number}|null }>({left:null,right:null})
+  // Corrige problema de múltipla referência de círculos (era: animalScreenCircles fica duplicado quando animaisWorldPosRef é duplicada)
+  // Usar IDs reais únicos para cada animal na cena e garantir 1 círculo por entidade AR criada.
+  // Salvamos também o "animalName" corretamente vinculado ao ID.
+
+  const animalsWorldPosRef = useRef<{
+    left: {x:number,y:number,z:number}|null,
+    right: {x:number,y:number,z:number}|null,
+  }>({left:null,right:null})
+
+  // Mantemos um mapeamento global de id da entidade => animal
+  const entityIdToAnimal = useRef<Record<string, AnimalType>>({})
 
   /**
-   * Extra: World-to-screen helper for React clickable overlay buttons.
-   * Returns array: [{ x, y, key, color, animalName, screenPxRadius, entityId }]
+   * World-to-screen helper. Result: [{ x, y, entityId, animalName, ... }]
+   * Garante 1 círculo por entidade visível, com dados _corretos_ de animal.
    */
   function worldPositionsToScreenPositions(canvas: HTMLCanvasElement | null, camObj: any) {
     if (!canvas) return []
     const res: Array<{
       x: number
       y: number
-      key: 'left' | 'right'
+      key: string
       color: string
       animalName: AnimalType
       screenPxRadius: number
-      entityId: string | null
+      entityId: string
     }> = []
     const width = canvas.width
     const height = canvas.height
@@ -86,48 +96,29 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     if (!THREE || !camObj) return []
 
     const ANIMAL_SCREEN_RADIUS = 25
-    if (animalsWorldPosRef.current.left) {
-      const pos = animalsWorldPosRef.current.left
-      const leftId = animalEntitiesRef.current.left
+
+    // Corrigido: gerar círculos _exatamente_ por entidade AR gerada (left/right).
+    const animalsToCheck: Array<{id: string|null, pos: {x:number,y:number,z:number}|null, key: string, color: string}> = [
+      { id: animalEntitiesRef.current.left,  pos: animalsWorldPosRef.current.left,  key: 'left',  color: 'rgba(33, 99, 255, 0.6)' },
+      { id: animalEntitiesRef.current.right, pos: animalsWorldPosRef.current.right, key: 'right', color: 'rgba(145, 200, 255, 0.6)' }
+    ]
+
+    for (const {id, pos, key, color} of animalsToCheck) {
+      if (!id || !pos) continue
       const vector = new THREE.Vector3(pos.x, pos.y, pos.z)
       vector.project(camObj)
       const sx = (vector.x + 1) / 2 * width
       const sy = (1 - (vector.y + 1) / 2) * height
-      let animalName: AnimalType = 'gato'
-      if (arSceneRef.current && leftId) {
-        const el = document.getElementById(leftId)
-        animalName = (el?.getAttribute('data-animal') as AnimalType) || 'gato'
-      }
+      // animalName bem demarcado: pega do mapeamento salvo por entity, nunca reflete/buga
+      const nameFromMapping = entityIdToAnimal.current[id] as AnimalType
       res.push({
         x: sx,
         y: sy,
-        key: 'left',
-        color: 'rgba(33, 99, 255, 0.6)',
-        animalName,
+        key: id, // Garante cada círculo é único por entidade (não por left/right!)
+        color,
+        animalName: nameFromMapping ?? 'gato',
         screenPxRadius: ANIMAL_SCREEN_RADIUS,
-        entityId: leftId ?? null,
-      })
-    }
-    if (animalsWorldPosRef.current.right) {
-      const pos = animalsWorldPosRef.current.right
-      const rightId = animalEntitiesRef.current.right
-      const vector = new THREE.Vector3(pos.x, pos.y, pos.z)
-      vector.project(camObj)
-      const sx = (vector.x + 1) / 2 * width
-      const sy = (1 - (vector.y + 1) / 2) * height
-      let animalName: AnimalType = 'gato'
-      if (arSceneRef.current && rightId) {
-        const el = document.getElementById(rightId)
-        animalName = (el?.getAttribute('data-animal') as AnimalType) || 'gato'
-      }
-      res.push({
-        x: sx,
-        y: sy,
-        key: 'right',
-        color: 'rgba(145, 200, 255, 0.6)',
-        animalName,
-        screenPxRadius: ANIMAL_SCREEN_RADIUS,
-        entityId: rightId ?? null,
+        entityId: id,
       })
     }
     return res
@@ -156,7 +147,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       }, 100)
       return
     }
-
     async function setupCamera() {
       try {
         const existingVideo = document.getElementById('arjs-video') as HTMLVideoElement
@@ -232,17 +222,40 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   }, [usarVideo])
 
   const clearAnimals = useCallback(() => {
+    // Limpa o mapeamento de entidades para animal também!
     if (animalEntitiesRef.current.left && arSceneRef.current) {
-      arSceneRef.current.removeEntity(animalEntitiesRef.current.left)
+      const leftId = animalEntitiesRef.current.left
+      arSceneRef.current.removeEntity(leftId)
+      // Garantir remoção do DOM também
+      const leftEntity = document.getElementById(leftId)
+      if (leftEntity) {
+        leftEntity.remove()
+      }
       animalEntitiesRef.current.left = null
     }
     if (animalEntitiesRef.current.right && arSceneRef.current) {
-      arSceneRef.current.removeEntity(animalEntitiesRef.current.right)
+      const rightId = animalEntitiesRef.current.right
+      arSceneRef.current.removeEntity(rightId)
+      // Garantir remoção do DOM também
+      const rightEntity = document.getElementById(rightId)
+      if (rightEntity) {
+        rightEntity.remove()
+      }
       animalEntitiesRef.current.right = null
     }
     correctEntityIdRef.current = null
     animalsWorldPosRef.current.left = null
     animalsWorldPosRef.current.right = null
+    entityIdToAnimal.current = {}
+    
+    // Limpar qualquer entidade órfã com classe clickable-animal
+    const sceneEl = arSceneRef.current?.getScene()
+    if (sceneEl) {
+      const orphanEntities = sceneEl.querySelectorAll('.clickable-animal')
+      orphanEntities.forEach((entity: Element) => {
+        entity.remove()
+      })
+    }
   }, [])
 
   /** Ensure round game logic always uses fresh currentRound value */
@@ -285,6 +298,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         cameraObj
       )
 
+      // Clicar no animal correto: sempre ler animal do atributo fresh + id verificado
       const clickableObjects = sceneEl.querySelectorAll('.clickable-animal')
       const intersections: any[] = []
       clickableObjects.forEach((obj: any) => {
@@ -304,9 +318,17 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       if (intersections.length > 0) {
         intersections.sort((a, b) => a.distance - b.distance)
         const closest = intersections[0]
-        const animalName = closest.el.getAttribute('data-animal') as AnimalType
+        // SANITIZED: animalName agora _exatamente_ o atribuído à entidade por seu ID, não por closure
+        const entityId = closest.el.id
+        let animalName: AnimalType | null = null
+        if (entityId && entityIdToAnimal.current[entityId]) {
+          animalName = entityIdToAnimal.current[entityId]
+        } else {
+          // fallback legacy (evita bug caso entity mapping caiu)
+          animalName = (closest.el.getAttribute('data-animal') as AnimalType) || null
+        }
 
-        // Sempre pegue o valor ATUAL de round (para evitar bug visual vs lógica)
+        // Sempre valor de round REAL, não stale closure
         const logicCurrentRound = currentRoundRef.current
         const currentAnimal = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
         let expectedAnimal: AnimalType | null = null
@@ -330,7 +352,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
   const handleAnimalClickRef = useRef<((clickedAnimal: AnimalType, correctAnimal: AnimalType, event?: Event) => void) | null>(null)
 
-  // --- SPAWN corrigido: só usa os .name de cada animal ---
+  // --- SPAWN corrigido: faz mapeamento preciso entidade=>animal, e armazena só 1 de cada lado ---
 
   const spawnAnimals = useCallback((correctAnimal: AnimalType, wrongAnimal: AnimalType) => {
     if (!arSceneRef.current || !sceneReady) {
@@ -368,6 +390,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     const leftPos = { x: -1.5, y: 0, z: INITIAL_ANIMAL_Z }
     const rightPos = { x: 1.5, y: 0, z: INITIAL_ANIMAL_Z }
 
+    // Gera entity id, depois salva mapeamento id=>animalName preciso.
     const leftEntityId = arSceneRef.current.addEntity({
       geometry: 'primitive: plane',
       material: `src: ${normalizePath(`assets/images/${leftAnimal.arImage}`)}; transparent: true; side: double`,
@@ -397,6 +420,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     animalsWorldPosRef.current.left = {...leftPos}
     animalsWorldPosRef.current.right = {...rightPos}
 
+    // Mapeamento correto id => nome do animal, usado nas projeções e no clique.
+    entityIdToAnimal.current = {
+      [leftEntityId]: leftAnimal.name as AnimalType,
+      [rightEntityId]: rightAnimal.name as AnimalType
+    }
+
     if (correctOnLeft) {
       correctEntityIdRef.current = leftEntityId
       correctEntityPosRef.current = { ...leftPos }
@@ -405,6 +434,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       correctEntityPosRef.current = { ...rightPos }
     }
 
+    // FORÇA, após timeout, sincronia do atributo data-animal (garante click A-Frame correto)
     setTimeout(() => {
       const leftEntity = document.getElementById(leftEntityId)
       const rightEntity = document.getElementById(rightEntityId)
@@ -427,7 +457,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     }, 200)
   }, [sceneReady, clearAnimals, normalizePath])
 
-  // Handler absolutely always referencing currentRoundRef for logic; never stale closure!
+  // Handler: sempre referência fiel via idToAnimal e roundRef!
   const handleAnimalClick = useCallback((clickedAnimal: AnimalType, _correctAnimalIgnored: AnimalType, event?: Event) => {
     if (isAnimating) return
 
@@ -537,7 +567,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   // Ref para o canvas de debug
   const debugCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const [animalScreenCircles, setAnimalScreenCircles] = useState<
-    Array<{ x: number; y: number; key: 'left' | 'right'; color: string; animalName: AnimalType; screenPxRadius: number; entityId: string | null }>
+    Array<{ x: number; y: number; key: string; color: string; animalName: AnimalType; screenPxRadius: number; entityId: string }>
   >([])
 
   useEffect(() => {
@@ -565,10 +595,11 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         return
       }
 
+      // Gera UI só para entidades (circle == strictly entity)
       const circles = worldPositionsToScreenPositions(canvas, camObj)
       setAnimalScreenCircles(circles)
 
-      circles.forEach(({ x, y, color, key }) => {
+      circles.forEach(({ x, y, color }) => {
         ctx.beginPath()
         ctx.arc(x, y, 25, 0, Math.PI * 2)
         ctx.fillStyle = color
@@ -673,9 +704,9 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   }, [sceneReady, currentRound])
 
   const desktopTestMode = !usarVideo
-  // Handler corrigido para desktop: compara SEMPRE com lógica do round real
+
+  // Handler desktop: consulta pelo id mapping correto, nunca por closure/config do round.
   const handleDesktopAnimalClick = (animal: AnimalType, _unusedCorrect: AnimalType, event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
-    // Usar logicCurrentRound, nunca closure
     const logicCurrentRound = currentRoundRef.current
     const curr = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
     let correctAnimal: AnimalType | null = null
@@ -687,7 +718,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     }
   }
 
-  // Handler para clique/toque nos círculos da UI Overlay REACT
+  // Handler Circle Overlay: AQUI também, lookup correto do nome pelo id.
   const handleCircleButtonClick = useCallback((circle: typeof animalScreenCircles[number], event: React.MouseEvent | React.TouchEvent) => {
     const logicCurrentRound = currentRoundRef.current
     const curr = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
@@ -696,10 +727,11 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     event.stopPropagation()
     event.preventDefault()
     const expectedAnimal = curr.name
+    // No click, pega animal diretamente pelo círculo/entidade (sem bug de mapping!)
     if (handleAnimalClickRef.current) {
       handleAnimalClickRef.current(circle.animalName, expectedAnimal, event.nativeEvent)
     }
-  }, [isAnimating])
+  }, [isAnimating, animalScreenCircles])
 
   return (
     <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{position:'fixed'}}>
@@ -722,7 +754,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         aria-label="Debug blue circle for animal positions"
       />
 
-      {/* Overlay dos botões "círculos" – só quando há círculo visível e não terminou */}
+      {/* Overlay dos botões "círculos" – cada círculo agora 1-para-1 com uma entidade animal */}
       {sceneReady && animalScreenCircles.length > 0 && !selectedAnimal && (
         <div
           style={{
@@ -739,7 +771,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         >
           {animalScreenCircles.map(circle => (
             <button
-              key={circle.key}
+              key={circle.entityId}
               type="button"
               aria-label={`Selecionar animal ${circle.animalName}`}
               tabIndex={0}
@@ -764,10 +796,10 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 transition: 'background .14s'
               }}
               disabled={isAnimating}
-              data-key={circle.key}
+              data-key={circle.entityId}
               data-animal={circle.animalName}
               data-animal-tag={circle.animalName}
-              data-entity-id={circle.entityId || ''}
+              data-entity-id={circle.entityId}
               data-testid={`animal-circle-btn-${circle.animalName}`}
             >
               {/* <span style={{fontWeight:700,fontSize:18, color:'#fff'}}>{circle.animalName}</span> */}
