@@ -32,7 +32,7 @@ const ANIMALS: AnimalConfig[] = [
 const TOTAL_ROUNDS = 5
 
 const MOVE_STEP = 0.2
-const INITIAL_ANIMAL_Z = -6
+const INITIAL_ANIMAL_Z = -4
 
 function getCorrectAnimalForRound(round: number): AnimalType {
   if (round >= 0 && round < ANIMALS.length) {
@@ -95,7 +95,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     const THREE = (window as any).THREE
     if (!THREE || !camObj) return []
 
-    const ANIMAL_SCREEN_RADIUS = 25
+    const ANIMAL_SCREEN_RADIUS = 37 // Antes era 25; aumentado
 
     // Corrigido: gerar círculos _exatamente_ por entidade AR gerada (left/right).
     const animalsToCheck: Array<{id: string|null, pos: {x:number,y:number,z:number}|null, key: string, color: string}> = [
@@ -599,13 +599,14 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       const circles = worldPositionsToScreenPositions(canvas, camObj)
       setAnimalScreenCircles(circles)
 
-      circles.forEach(({ x, y, color }) => {
+      // Aumente o raio desenhado para debug para bater com o botão invisível
+      circles.forEach(({ x, y }) => {
         ctx.beginPath()
-        ctx.arc(x, y, 25, 0, Math.PI * 2)
-        ctx.fillStyle = color
+        ctx.arc(x, y, 37, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(0,0,0,0.045)' // transparente para debug visual sutil
         ctx.fill()
-        ctx.strokeStyle = 'rgba(33, 99, 255, 1)'
-        ctx.lineWidth = 4
+        ctx.strokeStyle = 'rgba(33, 99, 255, 0.13)'
+        ctx.lineWidth = 2
         ctx.stroke()
       })
     }
@@ -784,13 +785,13 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 width: `${circle.screenPxRadius * 2}px`,
                 height: `${circle.screenPxRadius * 2}px`,
                 borderRadius: '100%',
-                background: circle.color,
-                border: '2.5px solid #2163ff',
-                boxShadow: '0 0 12px rgba(80,110,250,0.13)',
+                // background: circle.color, // Removido, botão ficará invisível!
+                // border: '2.5px solid #2163ff', // Removido, botão invisível
+                // boxShadow: '0 0 12px rgba(80,110,250,0.13)', // Removido
                 zIndex: 122,
                 cursor: isAnimating ? 'default' : 'pointer',
                 pointerEvents: isAnimating ? 'none' : 'auto',
-                opacity: 0.94,
+                opacity: 0, // botão totalmente invisível visualmente, mas interativo
                 userSelect: 'none',
                 outline: 'none',
                 transition: 'background .14s'
