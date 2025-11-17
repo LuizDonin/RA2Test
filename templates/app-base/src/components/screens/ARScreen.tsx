@@ -1045,15 +1045,15 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             position: 'fixed',
             top: '68%',
             left: '50%',
-            transform: 'translate(-50%, -50%)',
+           // transform: 'translate(-50%, -50%)',
             zIndex: 20,
             pointerEvents: 'none',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             gap: '2px',
-            animation: 'fadeInScale 0.5s ease-out',
-            opacity: 1,
+            animation: 'fadeInScale 0.5s ease-out forwards',
+            //opacity: 1,
             transition: 'opacity 0.07s linear'
           }}
         >
