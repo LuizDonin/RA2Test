@@ -6,8 +6,6 @@ import { playClickSound, playSuccessSound, playErrorSound } from '../../utils/so
 import { ARSceneAFrame, ARSceneAFrameRef } from '../ARSceneAFrame'
 import '../../styles/ar-screen.css'
 
-// --- Aqui começa a parte importante pra depuração dos cliques ---
-
 interface ARScreenProps {
   onNavigate: (screen: ScreenType, transition?: TransitionType, direction?: TransitionDirection) => void
   title?: string
@@ -34,9 +32,14 @@ const ANIMALS: AnimalConfig[] = [
 const TOTAL_ROUNDS = 5
 
 const MOVE_STEP = 0.2
-
-// EDIT: z inicial dos animais ficou mais distante (de -2 para -3.5)
 const INITIAL_ANIMAL_Z = -6
+
+function getCorrectAnimalForRound(round: number): AnimalType {
+  if (round >= 0 && round < ANIMALS.length) {
+    return ANIMALS[round].name
+  }
+  return 'gato'
+}
 
 export const ARScreen: React.FC<ARScreenProps> = ({
   onNavigate: _onNavigate
@@ -56,9 +59,79 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   const arSceneRef = useRef<ARSceneAFrameRef>(null)
   const animalEntitiesRef = useRef<{ left: string | null; right: string | null }>({ left: null, right: null })
   const correctEntityIdRef = useRef<string | null>(null)
-  const correctEntityPosRef = useRef<{x: number, y: number, z: number}>({x: -1.5, y: 0, z: -10}) // Default fallback
+  const correctEntityPosRef = useRef<{x: number, y: number, z: number}>({x: -1.5, y: 0, z: -10})
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
+
+  const animalsWorldPosRef = useRef<{ left: {x:number,y:number,z:number}|null, right: {x:number,y:number,z:number}|null }>({left:null,right:null})
+
+  /**
+   * Extra: World-to-screen helper for React clickable overlay buttons.
+   * Returns array: [{ x, y, key, color, animalName, screenPxRadius, entityId }]
+   */
+  function worldPositionsToScreenPositions(canvas: HTMLCanvasElement | null, camObj: any) {
+    if (!canvas) return []
+    const res: Array<{
+      x: number
+      y: number
+      key: 'left' | 'right'
+      color: string
+      animalName: AnimalType
+      screenPxRadius: number
+      entityId: string | null
+    }> = []
+    const width = canvas.width
+    const height = canvas.height
+    const THREE = (window as any).THREE
+    if (!THREE || !camObj) return []
+
+    const ANIMAL_SCREEN_RADIUS = 25
+    if (animalsWorldPosRef.current.left) {
+      const pos = animalsWorldPosRef.current.left
+      const leftId = animalEntitiesRef.current.left
+      const vector = new THREE.Vector3(pos.x, pos.y, pos.z)
+      vector.project(camObj)
+      const sx = (vector.x + 1) / 2 * width
+      const sy = (1 - (vector.y + 1) / 2) * height
+      let animalName: AnimalType = 'gato'
+      if (arSceneRef.current && leftId) {
+        const el = document.getElementById(leftId)
+        animalName = (el?.getAttribute('data-animal') as AnimalType) || 'gato'
+      }
+      res.push({
+        x: sx,
+        y: sy,
+        key: 'left',
+        color: 'rgba(33, 99, 255, 0.6)',
+        animalName,
+        screenPxRadius: ANIMAL_SCREEN_RADIUS,
+        entityId: leftId ?? null,
+      })
+    }
+    if (animalsWorldPosRef.current.right) {
+      const pos = animalsWorldPosRef.current.right
+      const rightId = animalEntitiesRef.current.right
+      const vector = new THREE.Vector3(pos.x, pos.y, pos.z)
+      vector.project(camObj)
+      const sx = (vector.x + 1) / 2 * width
+      const sy = (1 - (vector.y + 1) / 2) * height
+      let animalName: AnimalType = 'gato'
+      if (arSceneRef.current && rightId) {
+        const el = document.getElementById(rightId)
+        animalName = (el?.getAttribute('data-animal') as AnimalType) || 'gato'
+      }
+      res.push({
+        x: sx,
+        y: sy,
+        key: 'right',
+        color: 'rgba(145, 200, 255, 0.6)',
+        animalName,
+        screenPxRadius: ANIMAL_SCREEN_RADIUS,
+        entityId: rightId ?? null,
+      })
+    }
+    return res
+  }
 
   const getBaseUrl = () => {
     const base = (import.meta as any)?.env?.BASE_URL || (document?.baseURI ? new URL(document.baseURI).pathname : '/')
@@ -75,8 +148,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     return `${baseUrl}/${cleanPath}`
   }, [baseUrl])
 
-  // Camera setup igual...
-
   useEffect(() => {
     if (!usarVideo) {
       setArLoading(false)
@@ -88,16 +159,11 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
     async function setupCamera() {
       try {
-        // Sempre criar nova stream para garantir configuração de retrato
-        // Mesmo se já existir vídeo, vamos recriar com as configurações corretas
         const existingVideo = document.getElementById('arjs-video') as HTMLVideoElement
         if (existingVideo && existingVideo.srcObject) {
-          // Parar stream existente
           const existingStream = existingVideo.srcObject as MediaStream
           existingStream.getTracks().forEach(track => track.stop())
         }
-
-        // Configuração para retrato: altura maior que largura
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: 720 },
@@ -106,8 +172,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           },
           audio: false
         })
-
-        // Reutilizar vídeo existente ou criar novo
         let video = existingVideo
         if (!video) {
           video = document.createElement('video')
@@ -124,39 +188,23 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           video.style.zIndex = '0'
           document.body.appendChild(video)
         }
-
-        // Atualizar estilos
         video.style.display = 'block'
         video.style.visibility = 'visible'
         video.style.opacity = '0'
         video.style.transition = 'opacity 0.6s ease-in'
-
         video.srcObject = stream
         mediaStreamRef.current = stream
         videoRef.current = video
 
-        try {
-          await video.play()
-        } catch (playErr) {
-          // eslint-disable-next-line no-console
-          console.warn("[ARScreen] Falha ao chamar video.play():", playErr)
-          // Nada a fazer: se for AbortError, o fluxo geralmente segue normal
-        }
+        try { await video.play() } catch (playErr) { /* eslint-disable-next-line no-console */console.warn("[ARScreen] Falha ao chamar video.play():", playErr) }
 
         setArLoading(false)
         setTimeout(() => {
           setIsFadingIn(true)
-          if (video) {
-            video.style.opacity = '1'
-          }
+          if (video) { video.style.opacity = '1' }
         }, 100)
       } catch (err) {
-        // Se detectar um erro AbortError, explicar o motivo diretamente no console
-        if (
-          typeof window !== "undefined" &&
-          err &&
-          (err as any).name === "AbortError"
-        ) {
+        if (typeof window !== "undefined" && err && (err as any).name === "AbortError") {
           // eslint-disable-next-line no-console
           console.warn(
             "AbortError detectado ao configurar câmera (provavelmente play() interrompido por troca de srcObject). Veja https://goo.gl/LdLk22. Normalmente não impede o funcionamento do vídeo."
@@ -183,7 +231,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     }
   }, [usarVideo])
 
-  // Limpar animais da cena AR
   const clearAnimals = useCallback(() => {
     if (animalEntitiesRef.current.left && arSceneRef.current) {
       arSceneRef.current.removeEntity(animalEntitiesRef.current.left)
@@ -194,7 +241,15 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       animalEntitiesRef.current.right = null
     }
     correctEntityIdRef.current = null
+    animalsWorldPosRef.current.left = null
+    animalsWorldPosRef.current.right = null
   }, [])
+
+  /** Ensure round game logic always uses fresh currentRound value */
+  const currentRoundRef = useRef<number>(0)
+  useEffect(() => {
+    currentRoundRef.current = currentRound
+  }, [currentRound])
 
   useEffect(() => {
     if (!sceneReady) return
@@ -207,46 +262,31 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       camera = document.createElement('a-camera')
       sceneEl.appendChild(camera)
     }
-
-    // Remover cursor visual - vamos usar touch events diretamente
     const existingCursor = camera.querySelector('a-cursor')
-    if (existingCursor) {
-      existingCursor.remove()
-    }
-
-    // Configurar raycaster na câmera para detectar toques
+    if (existingCursor) { existingCursor.remove() }
     if (!camera.hasAttribute('raycaster')) {
       camera.setAttribute('raycaster', 'objects: .clickable-animal; far: 100; interval: 0')
     }
 
-    // Adicionar listener de toque na cena usando AFrame raycaster
     const handleTouchStart = (event: TouchEvent) => {
       if (isAnimating) return
-      
       const touch = event.touches[0]
       if (!touch) return
-
-      // Converter coordenadas de toque para coordenadas normalizadas (-1 a 1)
       const x = (touch.clientX / window.innerWidth) * 2 - 1
       const y = -(touch.clientY / window.innerHeight) * 2 + 1
-      
-      // Fazer raycast manualmente usando THREE.js
       const THREE = (window as any).THREE
       if (!THREE) return
-      
       const raycasterObj = new THREE.Raycaster()
       const cameraObj = (camera as any).getObject3D('camera')
       if (!cameraObj) return
-      
+
       raycasterObj.setFromCamera(
         new THREE.Vector2(x, y),
         cameraObj
       )
 
-      // Obter todos os objetos clicáveis
       const clickableObjects = sceneEl.querySelectorAll('.clickable-animal')
       const intersections: any[] = []
-      
       clickableObjects.forEach((obj: any) => {
         const obj3D = obj.getObject3D('mesh')
         if (obj3D) {
@@ -261,52 +301,37 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         }
       })
 
-      // Ordenar por distância e pegar o mais próximo
       if (intersections.length > 0) {
         intersections.sort((a, b) => a.distance - b.distance)
         const closest = intersections[0]
         const animalName = closest.el.getAttribute('data-animal') as AnimalType
-        
-        // eslint-disable-next-line no-console
-        console.log('[ARScreen] Touch detectado!', {
-          animalName,
-          element: closest.el,
-          allAttributes: Array.from(closest.el.attributes).map((attr) => ({ 
-            name: (attr as Attr).name, 
-            value: (attr as Attr).value 
-          }))
-        })
-        
-        if (animalName && handleAnimalClickRef.current) {
-          // Encontrar qual é o animal correto da rodada atual
-          const currentAnimal = currentRound < TOTAL_ROUNDS ? ANIMALS[currentRound] : null
-          if (currentAnimal) {
-            // eslint-disable-next-line no-console
-            console.log('[ARScreen] Comparando:', {
-              clicked: animalName,
-              expected: currentAnimal.name,
-              isCorrect: animalName === currentAnimal.name
-            })
-            handleAnimalClickRef.current(animalName, currentAnimal.name, event)
-          }
+
+        // Sempre pegue o valor ATUAL de round (para evitar bug visual vs lógica)
+        const logicCurrentRound = currentRoundRef.current
+        const currentAnimal = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
+        let expectedAnimal: AnimalType | null = null
+        if (currentAnimal) {
+          expectedAnimal = currentAnimal.name
+        }
+        if (animalName && handleAnimalClickRef.current && expectedAnimal) {
+          handleAnimalClickRef.current(animalName, expectedAnimal, event)
         } else {
           // eslint-disable-next-line no-console
-          console.warn('[ARScreen] Animal name não encontrado ou handler não disponível', { animalName, hasHandler: !!handleAnimalClickRef.current })
+          console.warn('[ARScreen] Animal name não encontrado ou handler não disponível', { animalName, hasHandler: !!handleAnimalClickRef.current, expectedAnimal })
         }
       }
     }
 
-    // Adicionar listener de toque na cena
     sceneEl.addEventListener('touchstart', handleTouchStart as any, { passive: false })
-    
     return () => {
       sceneEl.removeEventListener('touchstart', handleTouchStart as any)
     }
-  }, [sceneReady, isAnimating, currentRound])
+  }, [sceneReady, isAnimating])
 
   const handleAnimalClickRef = useRef<((clickedAnimal: AnimalType, correctAnimal: AnimalType, event?: Event) => void) | null>(null)
 
-  // --- SPAWN com logs explícitos e tratamento ---
+  // --- SPAWN corrigido: só usa os .name de cada animal ---
+
   const spawnAnimals = useCallback((correctAnimal: AnimalType, wrongAnimal: AnimalType) => {
     if (!arSceneRef.current || !sceneReady) {
       // eslint-disable-next-line no-console
@@ -340,7 +365,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     const leftAnimal = correctOnLeft ? correctAnimalConfig : wrongAnimalConfig
     const rightAnimal = correctOnLeft ? wrongAnimalConfig : correctAnimalConfig
 
-    // Z mais distante da camera
     const leftPos = { x: -1.5, y: 0, z: INITIAL_ANIMAL_Z }
     const rightPos = { x: 1.5, y: 0, z: INITIAL_ANIMAL_Z }
 
@@ -370,6 +394,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
     animalEntitiesRef.current.left = leftEntityId
     animalEntitiesRef.current.right = rightEntityId
+    animalsWorldPosRef.current.left = {...leftPos}
+    animalsWorldPosRef.current.right = {...rightPos}
 
     if (correctOnLeft) {
       correctEntityIdRef.current = leftEntityId
@@ -379,46 +405,42 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       correctEntityPosRef.current = { ...rightPos }
     }
 
-    // Garantir que os atributos data-animal estão corretos e forçar renderização
     setTimeout(() => {
       const leftEntity = document.getElementById(leftEntityId)
       const rightEntity = document.getElementById(rightEntityId)
 
       if (leftEntity) {
         leftEntity.setAttribute('data-animal', leftAnimal.name)
-        // eslint-disable-next-line no-console
-        console.log('[ARScreen] Entity LEFT configurado:', leftAnimal.name)
       }
-
       if (rightEntity) {
         rightEntity.setAttribute('data-animal', rightAnimal.name)
-        // eslint-disable-next-line no-console
-        console.log('[ARScreen] Entity RIGHT configurado:', rightAnimal.name)
       }
 
-      // Forçar renderização da cena após adicionar entidades
       const scene = sceneEl as any
       if (scene && scene.renderer) {
-        // Forçar atualização do renderer
         scene.renderer.setSize(window.innerWidth, window.innerHeight)
         if (scene.camera) {
           scene.renderer.render(scene.object3D, scene.camera)
         }
       }
-
-      // Disparar resize para forçar atualização
       window.dispatchEvent(new Event('resize'))
     }, 200)
   }, [sceneReady, clearAnimals, normalizePath])
 
-  // Handler de clique customizado com log
-  const handleAnimalClick = useCallback((clickedAnimal: AnimalType, correctAnimal: AnimalType, event?: Event) => {
-    // eslint-disable-next-line no-console
-    console.log('[ARScreen] handleAnimalClick acionado!', {clickedAnimal, correctAnimal, event, isAnimating});
+  // Handler absolutely always referencing currentRoundRef for logic; never stale closure!
+  const handleAnimalClick = useCallback((clickedAnimal: AnimalType, _correctAnimalIgnored: AnimalType, event?: Event) => {
     if (isAnimating) return
 
     setIsAnimating(true)
     playClickSound()
+
+    // Use SÓ o round lógico real, nunca corrente de closure de render!
+    const logicCurrentRound = currentRoundRef.current
+    const currentAnimal = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
+    let correctAnimal: AnimalType | null = null
+    if (currentAnimal) {
+      correctAnimal = currentAnimal.name
+    }
 
     const isCorrect = clickedAnimal === correctAnimal
     setSelectedAnimal(clickedAnimal)
@@ -440,10 +462,11 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         const nextRound = prev + 1
         if (nextRound < TOTAL_ROUNDS) {
           setTimeout(() => {
-            const correctAnimal = ANIMALS[nextRound]
-            const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimal.name)
+            const nextAnimal = ANIMALS[nextRound]
+            const correctAnimalForNextRound = nextAnimal.name
+            const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForNextRound)
             const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
-            spawnAnimals(correctAnimal.name, randomWrongAnimal.name)
+            spawnAnimals(correctAnimalForNextRound, randomWrongAnimal.name)
           }, 100)
         }
         return nextRound
@@ -460,25 +483,19 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       setCurrentRound(0)
       return
     }
-
-    const correctAnimal = ANIMALS[roundIndex]
-    const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimal.name)
+    const currentAnimal = ANIMALS[roundIndex]
+    const correctAnimalForRound = currentAnimal.name
+    const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimalForRound)
     const randomWrongAnimal = wrongAnimals[Math.floor(Math.random() * wrongAnimals.length)]
-
-    spawnAnimals(correctAnimal.name, randomWrongAnimal.name)
+    spawnAnimals(correctAnimalForRound, randomWrongAnimal.name)
   }, [spawnAnimals])
 
-  // Quando a cena estiver pronta, garantir que está visível e renderizando
   useEffect(() => {
     if (!sceneReady) return
-
     const sceneEl = arSceneRef.current?.getScene()
     if (!sceneEl) return
-
-    // Garantir que a cena está visível e renderizando
     const ensureSceneVisible = () => {
       if (sceneEl) {
-        // Garantir que a cena está visível (z-index correto)
         const sceneElement = sceneEl as HTMLElement
         if (sceneElement) {
           sceneElement.style.zIndex = '1'
@@ -486,8 +503,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           sceneElement.style.visibility = 'visible'
           sceneElement.style.opacity = '1'
         }
-
-        // Forçar renderização
         const scene = sceneEl as any
         if (scene.renderer) {
           scene.renderer.setSize(window.innerWidth, window.innerHeight)
@@ -495,17 +510,11 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             scene.renderer.render(scene.object3D, scene.camera)
           }
         }
-
-        // Disparar evento de resize para forçar atualização
         window.dispatchEvent(new Event('resize'))
       }
     }
-
-    // Aguardar um pouco para garantir que tudo está pronto
     setTimeout(() => {
       ensureSceneVisible()
-      
-      // Aguardar mais um pouco e iniciar primeira rodada
       setTimeout(() => {
         if (currentRound === 0) {
           startRound(0)
@@ -514,7 +523,9 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     }, 200)
   }, [sceneReady, currentRound, startRound])
 
-  const currentAnimal = currentRound < TOTAL_ROUNDS ? ANIMALS[currentRound] : null
+  // Sempre derive do ref para overlay visual
+  const logicCurrentRound = currentRoundRef.current
+  const currentAnimal = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
   const topImage = currentAnimal ? normalizePath(`assets/images/${currentAnimal.topImage}`) : ''
   const selectedAnimalImage = selectedAnimal ? normalizePath(`assets/images/${ANIMALS.find(a => a.name === selectedAnimal)!.arImage}`) : ''
   const feedbackImage = feedbackType === 'success'
@@ -523,7 +534,92 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     ? normalizePath('assets/images/erro.png')
     : ''
 
-  // WASD controls for desktop testing – move correct animal entity in AR scene
+  // Ref para o canvas de debug
+  const debugCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [animalScreenCircles, setAnimalScreenCircles] = useState<
+    Array<{ x: number; y: number; key: 'left' | 'right'; color: string; animalName: AnimalType; screenPxRadius: number; entityId: string | null }>
+  >([])
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | number | null = null
+    function syncCanvasAndCircles() {
+      const canvas = debugCanvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      const sceneEl = arSceneRef.current?.getScene()
+      if (!sceneReady || !sceneEl) {
+        setAnimalScreenCircles([])
+        return
+      }
+      const cameraEl = sceneEl.querySelector('a-camera')
+      const THREE = (window as any).THREE
+      if (!THREE || !cameraEl || !cameraEl.components || !cameraEl.components.camera) {
+        setAnimalScreenCircles([])
+        return
+      }
+      const camObj = cameraEl.getObject3D('camera')
+      if (!camObj) {
+        setAnimalScreenCircles([])
+        return
+      }
+
+      const circles = worldPositionsToScreenPositions(canvas, camObj)
+      setAnimalScreenCircles(circles)
+
+      circles.forEach(({ x, y, color, key }) => {
+        ctx.beginPath()
+        ctx.arc(x, y, 25, 0, Math.PI * 2)
+        ctx.fillStyle = color
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(33, 99, 255, 1)'
+        ctx.lineWidth = 4
+        ctx.stroke()
+      })
+    }
+    function onResize() {
+      const canvas = debugCanvasRef.current
+      if (!canvas) return
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+      syncCanvasAndCircles()
+    }
+
+    onResize()
+    window.addEventListener('resize', onResize)
+    intervalId = setInterval(syncCanvasAndCircles, 150)
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (intervalId) clearInterval(intervalId as any)
+    }
+  }, [sceneReady, currentRound])
+
+  useEffect(() => {
+    const handler = () => {
+      const canvas = debugCanvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    }
+    window.addEventListener('animal-pos-change', handler)
+    return () => {
+      window.removeEventListener('animal-pos-change', handler)
+    }
+  }, [])
+
+  useEffect(() => { }, [correctEntityPosRef.current])
+
+  useEffect(() => {
+    const canvas = debugCanvasRef.current
+    if (canvas) {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+  }, [])
+
   useEffect(() => {
     if (!sceneReady) return
     if (!correctEntityIdRef.current) return
@@ -558,8 +654,15 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       }
       if (moved) {
         correctEntityPosRef.current = { x, y, z }
+        if (animalEntitiesRef.current.left === id) {
+          animalsWorldPosRef.current.left = { x, y, z }
+        } else if (animalEntitiesRef.current.right === id) {
+          animalsWorldPosRef.current.right = { x, y, z }
+        }
         // @ts-expect-error
         arSceneRef.current.updateEntityPosition?.(id, `${x} ${y} ${z}`)
+        const evt = new Event('animal-pos-change')
+        window.dispatchEvent(evt)
       }
     }
     window.addEventListener('keydown', handler)
@@ -569,22 +672,109 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     }
   }, [sceneReady, currentRound])
 
-  // For desktop test: always show the AR animals if usarVideo = false
   const desktopTestMode = !usarVideo
-
-  // Handler explícito no desktop (direto no clique do <img> com logs)
-  const handleDesktopAnimalClick = (animal: AnimalType, correct: AnimalType, event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
-    // eslint-disable-next-line no-console
-    console.log('[ARScreen][DESKTOP] handleDesktopAnimalClick (img render)', { animal, correct, event, mouse: {x: event.clientX, y: event.clientY} });
-    if (handleAnimalClickRef.current) {
-      handleAnimalClickRef.current(animal, correct, event.nativeEvent)
+  // Handler corrigido para desktop: compara SEMPRE com lógica do round real
+  const handleDesktopAnimalClick = (animal: AnimalType, _unusedCorrect: AnimalType, event: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
+    // Usar logicCurrentRound, nunca closure
+    const logicCurrentRound = currentRoundRef.current
+    const curr = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
+    let correctAnimal: AnimalType | null = null
+    if (curr) {
+      correctAnimal = curr.name
+    }
+    if (handleAnimalClickRef.current && correctAnimal) {
+      handleAnimalClickRef.current(animal, correctAnimal, event.nativeEvent)
     }
   }
 
-  // Render
+  // Handler para clique/toque nos círculos da UI Overlay REACT
+  const handleCircleButtonClick = useCallback((circle: typeof animalScreenCircles[number], event: React.MouseEvent | React.TouchEvent) => {
+    const logicCurrentRound = currentRoundRef.current
+    const curr = logicCurrentRound < TOTAL_ROUNDS ? ANIMALS[logicCurrentRound] : null
+    if (!curr) return
+    if (isAnimating) return
+    event.stopPropagation()
+    event.preventDefault()
+    const expectedAnimal = curr.name
+    if (handleAnimalClickRef.current) {
+      handleAnimalClickRef.current(circle.animalName, expectedAnimal, event.nativeEvent)
+    }
+  }, [isAnimating])
+
   return (
-    <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`}>
+    <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{position:'fixed'}}>
       <LandscapeBlocker />
+
+      {/* Canvas de debug de posição dos animais */}
+      <canvas
+        ref={debugCanvasRef}
+        width={window.innerWidth}
+        height={window.innerHeight}
+        style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 99,
+          pointerEvents: 'none'
+        }}
+        aria-label="Debug blue circle for animal positions"
+      />
+
+      {/* Overlay dos botões "círculos" – só quando há círculo visível e não terminou */}
+      {sceneReady && animalScreenCircles.length > 0 && !selectedAnimal && (
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 120,
+            pointerEvents: 'auto',
+            userSelect: 'none'
+          }}
+          aria-label="Overlay botões animais"
+        >
+          {animalScreenCircles.map(circle => (
+            <button
+              key={circle.key}
+              type="button"
+              aria-label={`Selecionar animal ${circle.animalName}`}
+              tabIndex={0}
+              onClick={e => handleCircleButtonClick(circle, e)}
+              onTouchStart={e => handleCircleButtonClick(circle, e)}
+              style={{
+                position: 'absolute',
+                left: circle.x - circle.screenPxRadius,
+                top: circle.y - circle.screenPxRadius,
+                width: `${circle.screenPxRadius * 2}px`,
+                height: `${circle.screenPxRadius * 2}px`,
+                borderRadius: '100%',
+                background: circle.color,
+                border: '2.5px solid #2163ff',
+                boxShadow: '0 0 12px rgba(80,110,250,0.13)',
+                zIndex: 122,
+                cursor: isAnimating ? 'default' : 'pointer',
+                pointerEvents: isAnimating ? 'none' : 'auto',
+                opacity: 0.94,
+                userSelect: 'none',
+                outline: 'none',
+                transition: 'background .14s'
+              }}
+              disabled={isAnimating}
+              data-key={circle.key}
+              data-animal={circle.animalName}
+              data-animal-tag={circle.animalName}
+              data-entity-id={circle.entityId || ''}
+              data-testid={`animal-circle-btn-${circle.animalName}`}
+            >
+              {/* <span style={{fontWeight:700,fontSize:18, color:'#fff'}}>{circle.animalName}</span> */}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Loading overlay */}
       {arLoading && (
@@ -634,9 +824,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
 
       {/* Mostra animais para teste desktop explicitamente, com logs onClick */}
       {sceneReady && !selectedAnimal && desktopTestMode && (() => {
-        const idx = currentRound % ANIMALS.length
+        // Use round lógico de ref SEMPRE!
+        const logicCurrentRound = currentRoundRef.current
+        const idx = logicCurrentRound % ANIMALS.length
         const curr = ANIMALS[idx]
-        const wrongAnimals = ANIMALS.filter(a => a.name !== curr.name)
+        const correctAnimal = curr.name
+        const wrongAnimals = ANIMALS.filter(a => a.name !== correctAnimal)
         const other = wrongAnimals[0]
         return (
           <React.Fragment>
@@ -653,9 +846,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 draggable={false}
                 tabIndex={0}
                 onClick={e => {
-                  // eslint-disable-next-line no-console
-                  console.log('[ONCLICK IMG] Animal:', curr.name, 'expected:', curr.name, 'evento:', e.type, {x: e.clientX, y: e.clientY})
-                  handleDesktopAnimalClick(curr.name, curr.name, e)
+                  handleDesktopAnimalClick(curr.name, correctAnimal, e)
                 }}
                 onMouseDown={e => {
                   // eslint-disable-next-line no-console
@@ -663,10 +854,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
-                    handleDesktopAnimalClick(curr.name, curr.name, e as any)
+                    handleDesktopAnimalClick(curr.name, correctAnimal, e as any)
                   }
                 }}
                 data-testid={`animal-img-${curr.name}`}
+                data-animal={curr.name}
+                data-animal-tag={curr.name}
               />
             </div>
             <div style={{
@@ -682,9 +875,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 draggable={false}
                 tabIndex={0}
                 onClick={e => {
-                  // eslint-disable-next-line no-console
-                  console.log('[ONCLICK IMG] Animal:', other.name, 'expected:', curr.name, 'evento:', e.type, {x: e.clientX, y: e.clientY})
-                  handleDesktopAnimalClick(other.name, curr.name, e)
+                  handleDesktopAnimalClick(other.name, correctAnimal, e)
                 }}
                 onMouseDown={e => {
                   // eslint-disable-next-line no-console
@@ -692,10 +883,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
                 }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
-                    handleDesktopAnimalClick(other.name, curr.name, e as any)
+                    handleDesktopAnimalClick(other.name, correctAnimal, e as any)
                   }
                 }}
                 data-testid={`animal-img-${other.name}`}
+                data-animal={other.name}
+                data-animal-tag={other.name}
               />
             </div>
           </React.Fragment>
