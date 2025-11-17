@@ -32,7 +32,7 @@ const ANIMALS: AnimalConfig[] = [
 const TOTAL_ROUNDS = 5
 
 const MOVE_STEP = 0.2
-const INITIAL_ANIMAL_Z = -4
+const INITIAL_ANIMAL_Z = -3
 
 function getCorrectAnimalForRound(round: number): AnimalType {
   if (round >= 0 && round < ANIMALS.length) {
@@ -384,8 +384,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     const leftAnimal = correctOnLeft ? correctAnimalConfig : wrongAnimalConfig
     const rightAnimal = correctOnLeft ? wrongAnimalConfig : correctAnimalConfig
 
-    const leftPos = { x: -1.5, y: 0, z: INITIAL_ANIMAL_Z }
-    const rightPos = { x: 1.5, y: 0, z: INITIAL_ANIMAL_Z }
+    const leftPos = { x: -1.5, y: 0.5, z: INITIAL_ANIMAL_Z }
+    const rightPos = { x: 1.5, y: 0.5, z: INITIAL_ANIMAL_Z }
 
     const leftEntityId = arSceneRef.current.addEntity({
       geometry: 'primitive: plane',
@@ -845,6 +845,21 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     transition: 'none'
   }
 
+  // Novo estilo reduzido para o feedback das estrelas/erro:
+  const feedbackIconStyle: React.CSSProperties = {
+    userSelect: 'none',
+    pointerEvents: 'none',
+    display: 'block',
+    transform: 'scale(1)',
+    marginBottom: '-80px', // aproxima do animal
+    marginTop: '0px',
+    maxWidth: '120px',
+    minWidth: '64px',
+    width: 'min(120px, 30vw)',
+    height: 'auto',
+    transition: 'none'
+  }
+
   return (
     <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{ position: 'fixed' }}>
       <LandscapeBlocker />
@@ -1078,7 +1093,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         <div
           style={{
             position: 'fixed',
-            top: '58%',
+            top: '54%', // aproximar mais do animal (+ mais próximo do centro da tela, antes era 58%)
             left: '50%',
             transform: 'translate(-50%, -50%)',
             zIndex: 20,
@@ -1094,11 +1109,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             <img
               src={feedbackImage}
               alt={feedbackType === 'success' ? 'Estrelas' : 'Erro'}
-              style={{
-                userSelect: 'none',
-                pointerEvents: 'none',
-                display: 'block'
-              }}
+              style={feedbackIconStyle}
               draggable={false}
             />
           )}
