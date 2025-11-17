@@ -60,3 +60,37 @@ export const playSuccessSound = (): void => {
 export const playPhotoSound = (): void => {
   playSound('camera.mp3', 0.7)
 }
+
+// ----------- Animal sound functions -----------
+
+export const playCachorroAcertoSound = (): void => {
+  playSound('cachorro-acerto.mp3', 0.7)
+}
+export const playCachorroErroSound = (): void => {
+  playSound('cachorro-erro.mp3', 0.7)
+}
+export const playGalinhaAcertoSound = (): void => {
+  playSound('galinha-acerto.mp3', 0.7)
+}
+export const playGalinhaErroSound = (): void => {
+  playSound('galinha-erro.mp3', 0.7)
+}
+export const playGatoAcertoSound = (): void => {
+  playSound('gato-acerto.mp3', 0.7)
+}
+export const playGatoErroSound = (): void => {
+  playSound('gato-erro.mp3', 0.7)
+}
+export const playPorcoAcertoSound = (): void => {
+  playSound('porco-acerto.mp3', 0.7)
+}
+export const playPorcoErroSound = (): void => {
+  playSound('porco-erro.mp3', 0.7)
+}
+export const playVacaAcertoSound = (): void => {
+  playSound('vaca-acerto.mp3', 0.7)
+}
+export const playVacaErroSound = (): void => {
+  playSound('vaca-erro.mp3', 0.7)
+}
+

@@ -2,7 +2,21 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { LandscapeBlocker } from '../LandscapeBlocker'
 import { useRA } from '../../contexts/RAContext'
 import type { ScreenType, TransitionType, TransitionDirection } from '../../types/screens'
-import { playClickSound, playSuccessSound, playErrorSound } from '../../utils/soundUtils'
+import {
+  playClickSound,
+  playSuccessSound,
+  playErrorSound,
+  playGatoAcertoSound,
+  playCachorroAcertoSound,
+  playGalinhaAcertoSound,
+  playVacaAcertoSound,
+  playPorcoAcertoSound,
+  playGatoErroSound,
+  playCachorroErroSound,
+  playGalinhaErroSound,
+  playVacaErroSound,
+  playPorcoErroSound,
+} from '../../utils/soundUtils'
 import { ARSceneAFrame, ARSceneAFrameRef } from '../ARSceneAFrame'
 import '../../styles/ar-screen.css'
 
@@ -39,6 +53,22 @@ function getCorrectAnimalForRound(round: number): AnimalType {
     return ANIMALS[round].name
   }
   return 'gato'
+}
+
+const animalAcertoSoundMap: Record<AnimalType, () => void> = {
+  gato: playGatoAcertoSound,
+  cachorro: playCachorroAcertoSound,
+  galinha: playGalinhaAcertoSound,
+  vaca: playVacaAcertoSound,
+  porco: playPorcoAcertoSound,
+}
+
+const animalErroSoundMap: Record<AnimalType, () => void> = {
+  gato: playGatoErroSound,
+  cachorro: playCachorroErroSound,
+  galinha: playGalinhaErroSound,
+  vaca: playVacaErroSound,
+  porco: playPorcoErroSound,
 }
 
 // --- Correção bug feedback "flick" centralização ---
@@ -437,11 +467,16 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       const rightEntity = document.getElementById(rightEntityId)
       if (leftEntity) {
         leftEntity.setAttribute('data-animal', leftAnimal.name)
-        leftEntity.emit('animscalein')
+        if (typeof (leftEntity as any).emit === 'function') {
+          (leftEntity as any).emit('animscalein')
+        }
       }
       if (rightEntity) {
         rightEntity.setAttribute('data-animal', rightAnimal.name)
-        rightEntity.emit('animscalein')
+        // Fix for "This expression is not callable. Type 'void' has no call signatures."
+        if (typeof (rightEntity as any).emit === 'function') {
+          (rightEntity as any).emit('animscalein')
+        }
       }
       const scene = sceneEl as any
       if (scene && scene.renderer) {
@@ -477,7 +512,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     clearAnimals()
 
     if (isCorrect) {
-      playSuccessSound()
+      // Play specific success sound for animal in this round
+      if (correctAnimal && typeof animalAcertoSoundMap[correctAnimal] === 'function') {
+        animalAcertoSoundMap[correctAnimal]()
+      } else {
+        playSuccessSound()
+      }
       if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current)
       animTimeoutRef.current = window.setTimeout(() => {
         setTopImageAnim(prev => ({
@@ -501,10 +541,15 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             setFeedbackType(null)
             setIsAnimating(false)
           }, 600)
-        }, 600)
-      }, 800)
+        }, 1000)
+      }, 2000)
     } else {
-      playErrorSound()
+      // Play specific error sound for the animal the user clicked (not the correctAnimal)
+      if (clickedAnimal && typeof animalErroSoundMap[clickedAnimal] === 'function') {
+        animalErroSoundMap[clickedAnimal]()
+      } else {
+        playErrorSound()
+      }
       setTimeout(() => {
         setSelectedAnimal(null)
         setFeedbackType(null)
@@ -517,7 +562,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           setPendingARImages({ correct: correctAnimalForRound, wrong: randomWrongAnimal.name })
           setCanDisplayAnimals(false)
         }
-      }, 1700)
+      }, 3000)
     }
   }, [isAnimating, clearAnimals])
 
