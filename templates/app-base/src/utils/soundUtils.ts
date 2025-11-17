@@ -57,3 +57,6 @@ export const playSuccessSound = (): void => {
   playSound('acerto.mp3', 0.7)
 }
 
+export const playPhotoSound = (): void => {
+  playSound('camera.mp3', 0.7)
+}

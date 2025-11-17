@@ -65,7 +65,8 @@
 /* Container do botão */
 .tutorial-button-container {
     position: absolute;
-    bottom: calc(150px + env(safe-area-inset-bottom));
+    /* Aumenta o valor do bottom para descer o botão mais perto da base */
+    bottom: calc(60px + env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     z-index: 3;

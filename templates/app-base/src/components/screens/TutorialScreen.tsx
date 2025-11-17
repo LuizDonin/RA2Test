@@ -91,7 +91,7 @@ export const TutorialScreen: React.FC<TutorialScreenProps> = ({
     return `${baseUrl}/${cleanPath}`
   }
 
-  const bgImage = normalizePath('assets/images/bg-capa.png')
+  const bgImage = normalizePath('assets/images/bg.png')
   const tutorialPanelImage = normalizePath('assets/images/tutorial-panel.png')
   const btnComecarImage = normalizePath('assets/images/btn-comecar.png')
 
