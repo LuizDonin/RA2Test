@@ -41,6 +41,9 @@ function getCorrectAnimalForRound(round: number): AnimalType {
   return 'gato'
 }
 
+// --- Correção bug feedback "flick" centralização ---
+// Usaremos refs e state dedicado para forçar o conteúdo de feedback a aparecer já centralizado, nunca com translate incorreto
+
 export const ARScreen: React.FC<ARScreenProps> = ({
   onNavigate: _onNavigate
 }) => {
@@ -55,6 +58,10 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   const [selectedAnimal, setSelectedAnimal] = useState<AnimalType | null>(null)
   const [feedbackType, setFeedbackType] = useState<'success' | 'error' | null>(null)
   const [isAnimating, setIsAnimating] = useState(false)
+
+  // Ref para controlar quando o feedback foi realmente montado no DOM (usado para garantir centralização)
+  const feedbackRef = useRef<HTMLDivElement | null>(null)
+  const [feedbackMounted, setFeedbackMounted] = useState(false)
 
   // For top image transitions between rounds (custom logic)
   const [topImageAnim, setTopImageAnim] = useState<{
@@ -470,25 +477,22 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     setSelectedAnimal(clickedAnimal)
     setFeedbackType(isCorrect ? 'success' : 'error')
     clearAnimals()
+    setFeedbackMounted(false) // REFORÇA remount do componente feedback no clique!
 
     if (isCorrect) {
       playSuccessSound()
-      // NÃO faz nada com topImage aqui!
       if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current)
       animTimeoutRef.current = window.setTimeout(() => {
-        // Inicia transição de sumir imagem atual para o topo
         setTopImageAnim(prev => ({
           ...prev,
           phase: 'hide-current'
         }))
-        // Aguarda a saída (animação .6s) e troca de fase
         setTimeout(() => {
           setTopImageAnim(prev => ({
             ...prev,
             next: ANIMALS[logicCurrentRound + 1] ?? null,
             phase: 'show-next'
           }))
-          // Aguarda próxima imagem surgir (animação .6s)
           setTimeout(() => {
             setTopImageAnim({
               current: ANIMALS[logicCurrentRound + 1] ?? null,
@@ -499,7 +503,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             setSelectedAnimal(null)
             setFeedbackType(null)
             setIsAnimating(false)
-
+            setFeedbackMounted(false)
             if ((logicCurrentRound + 1) < TOTAL_ROUNDS) {
               const nextAnimal = ANIMALS[logicCurrentRound + 1]
               const correctAnimalForNextRound = nextAnimal.name
@@ -520,6 +524,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         setSelectedAnimal(null)
         setFeedbackType(null)
         setIsAnimating(false)
+        setFeedbackMounted(false)
         const curr = currentRoundRef.current < TOTAL_ROUNDS ? ANIMALS[currentRoundRef.current] : null
         if (curr) {
           const correctAnimalForRound = curr.name
@@ -557,7 +562,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       return
     }
 
-    // SÓ carrega animais, não mexe top image aqui
     setCanDisplayAnimals(false)
     const curr = currentRound < TOTAL_ROUNDS ? ANIMALS[currentRound] : null
     if (curr) {
@@ -567,11 +571,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       preloadARImages(correctAnimalForRound, randomWrongAnimal.name)
       setPendingARImages({ correct: correctAnimalForRound, wrong: randomWrongAnimal.name })
     }
-    // Atualiza a topImageAnim somente quando mudamos de fase (via handleAnimalClick)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRound, sceneReady])
-
-  // Same as before: overlays/canvas/etc
 
   const logicCurrentRound = currentRoundRef.current
   const desktopTestMode = !usarVideo
@@ -747,7 +748,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
       // Entrando
       return {
         top: 30,
-        //transition: 'top 0.6s cubic-bezier(.49,1.8,.55,1.04), opacity 0.35s'
       }
     }
     if (anim.phase === 'hide-current' && kind === 'current') {
@@ -761,13 +761,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     // show-next: a próxima topimage começa bem acima da tela, e desce em movimento linear até 30px
     if (anim.phase === 'show-next' && kind === 'next') {
       return {
-        top: '-160px', // fora da tela (ajuste conforme necessário)
-        transition: 'top 0s', // sem transição instantânea para posição inicial
+        top: '-160px',
+        transition: 'top 0s',
         willChange: 'top'
       }
     }
     if (anim.phase === 'show-next' && kind === 'current') {
-      // Fica "sumido" enquanto a próxima entra
       return {
         top: '-2000px',
         transition: 'top 0.01s'
@@ -779,7 +778,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     if (anim.phase === 'idle') {
       return { top: '-2000px', transition: 'top 0.01s' }
     }
-    // Default
     return { top: '-2000px', transition: 'top 0.01s' }
   }
 
@@ -789,16 +787,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
   // Handle animation for next topImage: entrada linear vinda do topo da tela para 30px
   useEffect(() => {
     if (topImageAnim.phase === 'show-next') {
-      // Inicialmente: começa acima da tela (top: -160px), sem animação/transição
       setShowNextTopImageLinearAnim(false)
-      // Pequeeeeno delay antes de ativar animação (assegura que o DOM esteja realmente no top: -160px)
       setTimeout(() => {
         setShowNextTopImageLinearAnim(true)
-        // Após o tempo da animação linear (0.48s no transition do style abaixo), troca next->current
         setTimeout(() => {
           setTopImageAnim(prev => ({
             ...prev,
-            // Troca: next -> current
             current: prev.next,
             next: null,
             phase: prev.next ? 'show-current' : 'idle'
@@ -822,26 +816,25 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     : ''
 
   // Custom: style for chosen animal shown in 2D after answer
-  // We move the animal a bit lower (more Y+), and reduce its scale, and ensure it is pre-centered (never animates from off-center).
+  // Centralização corrigida: use absolute LEFT/TOP 50% + translate(-50%, -50%), sem RELATIVE
+  // REMOVA qualquer margin/marginTop/marginAuto do antigo, e SEM delay até o feedback div estar no DOM
   const chosen2DAnimalStyle: React.CSSProperties = {
     userSelect: 'none',
     pointerEvents: 'none',
     display: 'block',
-    // A bit smaller than original
+    // Um pouco menor que o original
     width: 'min(220px, 48vw)',
     maxWidth: '220px',
     minWidth: '110px',
     height: 'auto',
-    // Center perfectly
-    position: 'relative',
-    left: '0',
-    right: '0',
-    margin: '0 auto',
-    // Move center anchor to bottom quarter of viewport
-    transform: 'scale(0.85)', // slight shrink
-    marginTop: '8vh',         // more space down
-    // No transform: translate ever here! 
-    // No transition for center (fixes mobile "sliding" bug)
+    position: 'static', // não mais relative/absolute aqui!
+    left: undefined,
+    right: undefined,
+    margin: undefined,
+    // Para ir mais para baixo, adiciona marginTop
+    marginTop: '100px',
+    // Não há transform de translate aqui
+    transform: 'scale(0.85)', // apenas escala
     transition: 'none'
   }
 
@@ -851,7 +844,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     pointerEvents: 'none',
     display: 'block',
     transform: 'scale(1)',
-    marginBottom: '-80px', // aproxima do animal
+    marginBottom: '-100px',
     marginTop: '0px',
     maxWidth: '120px',
     minWidth: '64px',
@@ -859,6 +852,26 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     height: 'auto',
     transition: 'none'
   }
+
+  // --- Garantir que não haja "flick" na animação do feedback central ---
+  // Isso ocorre porque o div pai do feedback estava montando inicialmente fora do centro (por causa do transition de translate),
+  // então forçamos o uso fixo de LEFT/TOP 50% + translate(-50%, -50%) sempre.
+
+  // Para garantir que não haja "flick": só mostramos o conteúdo quando o div feedback está no DOM (layout estabilizado).
+  // O state feedbackMounted auxilia nisso.
+  useEffect(() => {
+    if (!selectedAnimal) {
+      setFeedbackMounted(false)
+      return
+    }
+    // Pequeno timeout para garantir que o elemento está 100% no DOM antes de mostrar conteúdo (geralmente 1 tick)
+    const id = window.setTimeout(() => {
+      setFeedbackMounted(true)
+    }, 0)
+    return () => {
+      clearTimeout(id)
+    }
+  }, [selectedAnimal])
 
   return (
     <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{ position: 'fixed' }}>
@@ -881,7 +894,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         aria-label="Debug blue circle for animal positions"
       />
 
-      {/* Overlay dos botões "círculos" – cada círculo agora 1-para-1 com uma entidade animal */}
+      {/* Overlay dos botões "círculos" */}
       {canShowAnimalButtons && (
         <div
           style={{
@@ -948,9 +961,8 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         }}
       />
 
-      {/* Top image round: faz animação para cima/baixo entre fases */}
+      {/* Top image round */}
       <>
-        {/* Imagem atual (topImageAnim.current) */}
         {topImageAnim.current && (
           <div
             style={{
@@ -980,7 +992,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             />
           </div>
         )}
-        {/* Se o próximo já está preparado, renderiza, surge de cima (linearmente) */}
         {topImageAnim.next && (
           <div
             style={{
@@ -991,7 +1002,6 @@ export const ARScreen: React.FC<ARScreenProps> = ({
               pointerEvents: 'none',
               background: 'rgba(0,0,0,0.0)',
               padding: '0.5rem',
-              // Estilo para entrada linear: se showNextTopImageLinearAnim = true, faz transição para top:30px usando linear
               top: showNextTopImageLinearAnim ? 30 : getTopImageStyle(topImageAnim, 'next').top,
               transition: showNextTopImageLinearAnim
                 ? 'top 0.48s linear'
@@ -1016,7 +1026,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         )}
       </>
 
-      {/* Mostra animais para teste desktop explicitamente, com logs onClick */}
+      {/* Mostra animais para teste desktop explicitamente */}
       {sceneReady && (!selectedAnimal || feedbackType === 'error') && desktopTestMode && (() => {
         const logicCurrentRound = currentRoundRef.current
         const idx = logicCurrentRound % ANIMALS.length
@@ -1088,12 +1098,13 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         )
       })()}
 
-      {/* Feedback */}
+      {/* Feedback: corrigido para SEMPRE aparecer centralizado já na posição destino, sem flick */}
       {selectedAnimal && (
         <div
+          ref={feedbackRef}
           style={{
             position: 'fixed',
-            top: '54%', // aproximar mais do animal (+ mais próximo do centro da tela, antes era 58%)
+            top: '54%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
             zIndex: 20,
@@ -1102,10 +1113,12 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             flexDirection: 'column',
             alignItems: 'center',
             gap: '1px',
-            animation: 'fadeInScale 0.5s ease-out'
+            animation: feedbackMounted ? 'fadeInScale 0.5s ease-out' : undefined,
+            opacity: feedbackMounted ? 1 : 0,
+            transition: 'opacity 0.07s linear'
           }}
         >
-          {feedbackImage && (
+          {(feedbackMounted && feedbackImage) && (
             <img
               src={feedbackImage}
               alt={feedbackType === 'success' ? 'Estrelas' : 'Erro'}
@@ -1113,12 +1126,14 @@ export const ARScreen: React.FC<ARScreenProps> = ({
               draggable={false}
             />
           )}
-          <img
-            src={selectedAnimalImage}
-            alt={selectedAnimal}
-            style={chosen2DAnimalStyle}
-            draggable={false}
-          />
+          {feedbackMounted && (
+            <img
+              src={selectedAnimalImage}
+              alt={selectedAnimal}
+              style={chosen2DAnimalStyle}
+              draggable={false}
+            />
+          )}
         </div>
       )}
 
