@@ -821,6 +821,30 @@ export const ARScreen: React.FC<ARScreenProps> = ({
     ? normalizePath(`assets/images/${ANIMALS.find(a => a.name === selectedAnimal)!.arImage}`)
     : ''
 
+  // Custom: style for chosen animal shown in 2D after answer
+  // We move the animal a bit lower (more Y+), and reduce its scale, and ensure it is pre-centered (never animates from off-center).
+  const chosen2DAnimalStyle: React.CSSProperties = {
+    userSelect: 'none',
+    pointerEvents: 'none',
+    display: 'block',
+    // A bit smaller than original
+    width: 'min(220px, 48vw)',
+    maxWidth: '220px',
+    minWidth: '110px',
+    height: 'auto',
+    // Center perfectly
+    position: 'relative',
+    left: '0',
+    right: '0',
+    margin: '0 auto',
+    // Move center anchor to bottom quarter of viewport
+    transform: 'scale(0.85)', // slight shrink
+    marginTop: '8vh',         // more space down
+    // No transform: translate ever here! 
+    // No transition for center (fixes mobile "sliding" bug)
+    transition: 'none'
+  }
+
   return (
     <div className={`ar-game-screen ${isFadingIn ? 'ar-screen-fade-in' : 'ar-screen-fade-out'}`} style={{ position: 'fixed' }}>
       <LandscapeBlocker />
@@ -1054,7 +1078,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
         <div
           style={{
             position: 'fixed',
-            top: '50%',
+            top: '58%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
             zIndex: 20,
@@ -1062,7 +1086,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '2vh',
+            gap: '1px',
             animation: 'fadeInScale 0.5s ease-out'
           }}
         >
@@ -1081,11 +1105,7 @@ export const ARScreen: React.FC<ARScreenProps> = ({
           <img
             src={selectedAnimalImage}
             alt={selectedAnimal}
-            style={{
-              userSelect: 'none',
-              pointerEvents: 'none',
-              display: 'block'
-            }}
+            style={chosen2DAnimalStyle}
             draggable={false}
           />
         </div>
